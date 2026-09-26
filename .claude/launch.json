@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kiln",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 5281
+    },
+    {
+      "name": "kiln-single",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--outDir",
+        "dist-single",
+        "--port",
+        "5283",
+        "--strictPort"
+      ],
+      "port": 5283
+    }
+  ]
+}
