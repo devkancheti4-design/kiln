@@ -84,4 +84,8 @@ src/guide/      lessons (with self-checking challenges) and the reference behind
 src/app/        routing, IndexedDB shelf, prefs, folder sync, image import
 ```
 
-Fonts are open-licensed (SIL OFL). Each export includes the license files for the fonts it uses.
+## License
+
+Kiln is open source under the [MIT License](LICENSE). Sites you make with Kiln are yours, so use
+them however you like. The bundled fonts are open-licensed (SIL OFL), and each export includes the
+license files for the fonts it uses.

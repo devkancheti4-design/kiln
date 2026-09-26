@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Kiln \u2014 an offline, infinite website maker. Pick one of millions of real websites, carve your name into it, change the code with a guide, and fire it.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5281 --strictPort",
