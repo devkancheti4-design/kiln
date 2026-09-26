@@ -67,6 +67,30 @@ export function splitSite(source: string, content: Content | null): Record<strin
   return files;
 }
 
+/**
+ * A whole site as one project: every page becomes its own small html file, and the shared css/js
+ * come from the home page (all pages carry the same shared parts).
+ */
+export function splitProject(pages: { slug: string; source: string; content: Content | null }[]): Record<string, string> {
+  const files: Record<string, string> = {};
+  pages.forEach((p, i) => {
+    const one = splitSite(p.source, p.content);
+    if (i === 0) Object.assign(files, one);
+    files[`${p.slug}.html`] = one['index.html'];
+  });
+  if (pages.length > 1) files['AGENTS.md'] = agentsGuide(pages[0].source, pages[0].content, pages.map((p) => p.slug));
+  return files;
+}
+
+/** Every *.html in a project folder, joined back into self-contained pages. */
+export function joinProject(files: Record<string, string>): { slug: string; source: string }[] {
+  const slugs = Object.keys(files)
+    .filter((f) => /^[^/]+\.html$/.test(f))
+    .map((f) => f.slice(0, -5))
+    .sort((a, b) => (a === 'index' ? -1 : b === 'index' ? 1 : a.localeCompare(b)));
+  return slugs.map((slug) => ({ slug, source: joinSite({ ...files, 'index.html': files[`${slug}.html`] }) }));
+}
+
 export function joinSite(files: Record<string, string>): string {
   let html = files['index.html'] ?? '';
   for (const s of STYLES) {
@@ -88,8 +112,12 @@ export function joinSite(files: Record<string, string>): string {
 
 /** A short map of the project for AI coding agents (and busy humans). Reading this instead of the
  * whole engine keeps agent context — and token bills — small. */
-export function agentsGuide(source: string, content: Content | null): string {
+export function agentsGuide(source: string, content: Content | null, pageSlugs: string[] = ['index']): string {
   const t = readTokens(source);
+  const pagesNote =
+    pageSlugs.length > 1
+      ? `\n## Pages\n\nThis site has ${pageSlugs.length} pages: ${pageSlugs.map((s) => `\`${s}.html\``).join(', ')}. They share \`css/\` and \`js/\`;\neach page only holds its own words. Link between them with \`<a href="about.html">\`. The top-bar\nmenu is repeated on every page — change it on all pages, or ask Kiln to.\n`
+      : '';
   const sw = (n: 'form' | 'texture' | 'motion' | 'scene' | 'interact') => getSwitch(source, n) ?? 'none';
   const sections = content?.sections.filter((s) => !s.hidden).map((s) => `- \`#${s.id}\` — ${s.type}${s.nav ? ` (menu: ${s.nav})` : ''}`) ?? [];
   return `# AGENTS.md — how this site is built
@@ -108,6 +136,7 @@ in a browser. Keep it that way — never add CDNs, npm packages or remote fonts/
 
 Do **not** read \`css/engine.css\`, \`css/fonts.css\` or \`js/scene.js\` unless the task is about them.
 
+${pagesNote}
 ## Tokens (css/tokens.css)
 
 ${TOKEN_DOCS.map((d) => `- \`${d.name}: ${t[d.name] ?? '…'}\` — ${d.hint}`).join('\n')}
@@ -135,6 +164,12 @@ Patterns — copy one and edit it:
 - Question: \`<details><summary>Question</summary><p>Answer</p></details>\` inside \`.qa\`
 - Picture: \`<div class="art art-1">\` … \`art-12\` (painted in the site colors) or \`<img src="images/name.jpg" alt="…">\`
 - Button: \`<a class="btn">\`, outline \`btn ghost\`, sizes \`btn small\` / \`btn big\`
+- Long text: \`<article class="prose">\` with \`<p>\`, \`<h3>\`, \`<ul>\`, \`<blockquote>\`, \`<figure><img></figure>\`
+- Form: \`<form class="form">\` (data-mail = opens the email app; action = Formspree/Netlify to send for real)
+- Video/map: \`<figure class="embed"><iframe src="…"></iframe></figure>\`; table: \`<div class="table-wrap"><table>\`
+- Slider: \`<div class="slider"><div class="slides"><figure class="slide">…\`; logos: \`<ul class="logos">\`
+- Call to action: \`<section class="cta">\`; countdown: \`<div class="countdown" data-countdown="2026-12-12T11:00">\`
+- Announcement strip above the top bar: \`<p class="banner">\` (or \`<a class="banner" href>\`)
 - Highlighted word in a heading: \`<em>word</em>\`
 - Menu links point at section ids: \`<a href="#work">\` → \`<section id="work">\`
 

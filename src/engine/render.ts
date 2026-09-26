@@ -124,13 +124,68 @@ export function rich(s: string): string {
 const plain = (s: string) => s.replace(/\*/g, '');
 
 function mediaInner(m: Media, alt: string): string {
+  if (m.video) return `<video class="cover" src="${esc(m.video)}" autoplay muted loop playsinline aria-label="${esc(m.alt ?? alt)}"></video>`;
   if (m.image) return `<img src="${esc(m.image)}" alt="${esc(m.alt ?? alt)}" loading="lazy">`;
   return `<div class="art art-${Math.min(12, Math.max(1, m.art))}"></div>`;
 }
 
+const safeHref = (h: string) => (/^\s*(javascript|data):/i.test(h) ? '#' : h);
+
+/** Inline text: **bold**, *italic*, `code`, [text](url). */
+function inline(s: string): string {
+  return esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t, u) => `<a href="${esc(safeHref(u))}">${t}</a>`);
+}
+
+/** The article body: blank lines split blocks; ## headings, - bullets, > quotes, ![alt](src) pictures. */
+export function renderProse(body: string, indent = '        '): string {
+  const blocks = body.replace(/\r/g, '').split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const b of blocks) {
+    const lines = b.split('\n');
+    const img = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(b);
+    if (img) out.push(`${indent}<figure><img src="${esc(img[2])}" alt="${esc(img[1])}" loading="lazy"></figure>`);
+    else if (/^###\s/.test(b)) out.push(`${indent}<h4>${inline(b.replace(/^###\s+/, ''))}</h4>`);
+    else if (/^##?\s/.test(b)) out.push(`${indent}<h3>${inline(b.replace(/^##?\s+/, ''))}</h3>`);
+    else if (lines.every((l) => /^[-*]\s/.test(l))) out.push(`${indent}<ul>`, ...lines.map((l) => `${indent}  <li>${inline(l.replace(/^[-*]\s+/, ''))}</li>`), `${indent}</ul>`);
+    else if (lines.every((l) => /^\d+[.)]\s/.test(l))) out.push(`${indent}<ol>`, ...lines.map((l) => `${indent}  <li>${inline(l.replace(/^\d+[.)]\s+/, ''))}</li>`), `${indent}</ol>`);
+    else if (lines.every((l) => /^>\s?/.test(l))) out.push(`${indent}<blockquote><p>${inline(lines.map((l) => l.replace(/^>\s?/, '')).join(' '))}</p></blockquote>`);
+    else out.push(`${indent}<p>${inline(lines.join(' '))}</p>`);
+  }
+  return out.join('\n');
+}
+
+/** Turns a normal YouTube / Vimeo / Google Maps / Spotify link into something an <iframe> can show. */
+export function embedSrc(url: string): string {
+  const u = url.trim();
+  if (/^(javascript|data|vbscript):/i.test(u)) return '#';
+  let m: RegExpExecArray | null;
+  if ((m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/.exec(u))) return `https://www.youtube-nocookie.com/embed/${m[1]}`;
+  if ((m = /vimeo\.com\/(?:video\/)?(\d+)/.exec(u))) return `https://player.vimeo.com/video/${m[1]}`;
+  if ((m = /open\.spotify\.com\/(track|album|playlist|episode|show)\/([\w]+)/.exec(u))) return `https://open.spotify.com/embed/${m[1]}/${m[2]}`;
+  if (/google\.[a-z.]+\/maps|maps\.google\./.test(u)) {
+    if (/output=embed|\/maps\/embed/.test(u)) return u;
+    const q = /[?&]q=([^&]+)/.exec(u)?.[1] ?? /\/place\/([^/]+)/.exec(u)?.[1] ?? /\/search\/([^/]+)/.exec(u)?.[1];
+    if (q) return `https://maps.google.com/maps?q=${q}&output=embed`;
+  }
+  if (/^[^/]+$/.test(u) && !u.includes('.')) return `https://maps.google.com/maps?q=${encodeURIComponent(u)}&output=embed`;
+  return safeHref(u);
+}
+
 const SECTION_NOTES: Record<Section['type'], string> = {
   stats: 'NUMBERS — big figures with a small label',
-  cards: 'CARDS — copy an <article> to add another',
+  cards: 'CARDS — copy an <article> to add another (an <a class="card"> is a card that links somewhere)',
+  prose: 'ARTICLE — plain paragraphs, <h3> headings, lists and pictures',
+  form: 'FORM — with no action it opens the visitor’s email app; put a Formspree/Netlify address in action to send for real',
+  embed: 'VIDEO / MAP — an <iframe> from another site',
+  table: 'TABLE — one <tr> per row',
+  logos: 'LOGOS — clients, partners, places you were featured',
+  slider: 'SLIDER — swipe or use the arrows; copy a <figure> to add a slide',
+  cta: 'CALL TO ACTION — one big ask on a colored band',
+  countdown: 'COUNTDOWN — counts down to data-countdown (a date and time)',
   about: 'ABOUT — a picture and a few words',
   list: 'LIST — one <li class="row"> per line',
   quote: 'QUOTE — kind words from someone',
@@ -160,9 +215,9 @@ function renderSection(s: Section): string {
     case 'cards':
       body = [
         ...head(s.eyebrow, s.title, s.intro),
-        '      <div class="grid">',
+        `      <div class="grid${s.people ? ' people' : ''}">`,
         ...s.items.flatMap((it) => [
-          '        <article class="card">',
+          it.href ? `        <a class="card" href="${esc(safeHref(it.href))}">` : '        <article class="card">',
           s.showMedia ? `          <div class="card-media">${mediaInner(it.media, plain(it.title))}</div>` : '',
           '          <div class="card-body">',
           it.meta ? `            <p class="meta">${esc(it.meta)}</p>` : '',
@@ -170,7 +225,7 @@ function renderSection(s: Section): string {
           it.text ? `            <p>${rich(it.text)}</p>` : '',
           it.price ? `            <p class="price">${esc(it.price)}</p>` : '',
           '          </div>',
-          '        </article>',
+          it.href ? '        </a>' : '        </article>',
         ]).filter(Boolean),
         '      </div>',
       ];
@@ -226,6 +281,87 @@ function renderSection(s: Section): string {
         '      </div>',
       ];
       break;
+    case 'prose':
+      body = [...head(s.eyebrow, s.title), '      <article class="prose">', renderProse(s.body), '      </article>'];
+      break;
+    case 'form': {
+      const netlify = s.action.trim().toLowerCase() === 'netlify';
+      const action = netlify ? '/' : s.action.trim() || '#';
+      const attrs = netlify ? ' data-netlify="true" name="contact"' : s.action.trim() ? '' : ` data-mail="${esc(s.email)}"`;
+      const field = (f: string) => {
+        if (f === 'message') return `        <label><span>Message</span><textarea name="message" rows="5" required></textarea></label>`;
+        const type = f === 'email' ? 'email' : f === 'phone' ? 'tel' : 'text';
+        const label = f === 'name' ? 'Your name' : f === 'email' ? 'Email' : 'Phone';
+        return `        <label><span>${label}</span><input name="${f}" type="${type}"${f === 'name' || f === 'email' ? ' required' : ''}></label>`;
+      };
+      body = [
+        ...head(s.eyebrow, s.title, s.text),
+        `      <form class="form" action="${esc(action)}" method="post"${attrs}>`,
+        netlify ? '        <input type="hidden" name="form-name" value="contact">' : '',
+        ...s.fields.map(field),
+        `        <button class="btn big" type="submit">${esc(s.button)}</button>`,
+        '      </form>',
+      ].filter(Boolean);
+      break;
+    }
+    case 'embed':
+      body = [
+        ...head(s.eyebrow, s.title),
+        '      <figure class="embed">',
+        `        <iframe src="${esc(embedSrc(s.url))}" title="${esc(plain(s.title) || 'Embedded content')}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`,
+        s.caption ? `        <figcaption>${esc(s.caption)}</figcaption>` : '',
+        '      </figure>',
+      ].filter(Boolean);
+      break;
+    case 'table':
+      body = [
+        ...head(s.eyebrow, s.title, s.intro),
+        '      <div class="table-wrap">',
+        '      <table>',
+        `        <thead><tr>${s.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>`,
+        '        <tbody>',
+        ...s.rows.map((r) => `          <tr>${s.columns.map((_c, i) => (i === 0 ? `<th scope="row">${esc(r[i] ?? '')}</th>` : `<td>${esc(r[i] ?? '')}</td>`)).join('')}</tr>`),
+        '        </tbody>',
+        '      </table>',
+        '      </div>',
+      ];
+      break;
+    case 'logos':
+      body = [
+        s.eyebrow ? `      <p class="eyebrow">${esc(s.eyebrow)}</p>` : '',
+        '      <ul class="logos">',
+        ...s.items.map((it) => `        <li>${it.media?.image ? `<img src="${esc(it.media.image)}" alt="${esc(it.media.alt ?? it.name)}" loading="lazy">` : `<span>${esc(it.name)}</span>`}</li>`),
+        '      </ul>',
+      ].filter(Boolean);
+      break;
+    case 'slider':
+      body = [
+        ...head(s.eyebrow, s.title),
+        '      <div class="slider">',
+        '        <div class="slides">',
+        ...s.items.map((it) => `          <figure class="slide">${mediaInner(it.media, it.caption)}<figcaption>${esc(it.caption)}</figcaption></figure>`),
+        '        </div>',
+        '        <button class="slide-btn prev" type="button" aria-label="Previous">‹</button>',
+        '        <button class="slide-btn next" type="button" aria-label="Next">›</button>',
+        '      </div>',
+      ];
+      break;
+    case 'cta':
+      body = [
+        s.eyebrow ? `      <p class="eyebrow">${esc(s.eyebrow)}</p>` : '',
+        `      <h2>${rich(s.title)}</h2>`,
+        s.text ? `      <p>${rich(s.text)}</p>` : '',
+        `      <a class="btn big" href="${esc(safeHref(s.button.href))}">${esc(s.button.label)}</a>`,
+      ].filter(Boolean);
+      break;
+    case 'countdown':
+      body = [
+        ...head(s.eyebrow, s.title, s.text),
+        `      <div class="countdown" data-countdown="${esc(s.date)}">`,
+        ...['days', 'hours', 'minutes', 'seconds'].map((u) => `        <div class="count"><strong data-unit="${u}">–</strong><span>${u}</span></div>`),
+        '      </div>',
+      ];
+      break;
     case 'contact': {
       const details = [
         `        <li><span>Email</span>${esc(s.email)}</li>`,
@@ -247,23 +383,52 @@ function renderSection(s: Section): string {
   return [note, open, ...body, close].join('\n');
 }
 
-export function renderMarkup(c: Content): string {
+/** Which pages a site has. A single-page site passes nothing and renders exactly as before. */
+export interface SiteInfo {
+  pages: { slug: string; nav?: string }[]; // pages[0] is the home page ("index")
+  current: string;
+  /** the home page's menu entries (section id + label), repeated on every inner page */
+  homeMenu?: { id: string; nav: string }[];
+}
+
+export const HOME = 'index';
+
+export function renderMarkup(c: Content, site?: SiteInfo): string {
   const sections = c.sections.filter((s) => !s.hidden);
-  const nav = sections.filter((s) => s.nav).map((s) => `      <a href="#${esc(s.id)}">${esc(s.nav!)}</a>`);
+  const multi = !!site && site.pages.length > 1;
+  const home = !site || site.current === HOME;
+  const ids = new Set(sections.map((s) => s.id));
+  ids.add('top');
+  // On an inner page, "#work" only works if this page has that section; otherwise it lives on the home page.
+  const link = (href: string) => (!home && href.startsWith('#') && !ids.has(href.slice(1)) ? `${HOME}.html${href}` : href);
+  const nav = [
+    ...(home
+      ? sections.filter((s) => s.nav).map((s) => `      <a href="#${esc(s.id)}">${esc(s.nav!)}</a>`)
+      : (site?.homeMenu ?? []).map((s) => `      <a href="${HOME}.html#${esc(s.id)}">${esc(s.nav)}</a>`)),
+    ...(multi
+      ? site!.pages
+          .filter((p) => p.slug !== HOME && p.nav)
+          .map((p) => `      <a href="${esc(p.slug)}.html"${p.slug === site!.current ? ' aria-current="page"' : ''}>${esc(p.nav!)}</a>`)
+      : []),
+  ];
   const when = (cond: unknown, line: string) => (cond ? line : null);
   const lines: (string | null)[] = [
     '  <a class="skip" href="#main">Skip to content</a>',
     '',
-    '  <!-- TOP BAR — your name and menu. Each link jumps to a section id. -->',
+    when(c.banner?.text, '  <!-- BANNER — a one-line announcement. Delete these lines to remove it. -->'),
+    when(c.banner?.text, c.banner?.href ? `  <a class="banner" href="${esc(safeHref(link(c.banner.href)))}">${rich(c.banner?.text ?? '')}</a>` : `  <p class="banner">${rich(c.banner?.text ?? '')}</p>`),
+    when(c.banner?.text, ''),
+    multi ? '  <!-- TOP BAR — your name and menu. Links go to sections (#id) or other pages (name.html). -->' : '  <!-- TOP BAR — your name and menu. Each link jumps to a section id. -->',
     '  <header class="nav">',
-    `    <a class="brand" href="#top"><span class="mark">${esc(c.mark)}</span> ${esc(c.brand)}</a>`,
+    `    <a class="brand" href="${home ? '#top' : `${HOME}.html`}"><span class="mark">${esc(c.mark)}</span> ${esc(c.brand)}</a>`,
+    when(nav.length >= 4, '    <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false"><span></span></button>'),
     when(nav.length, '    <nav class="menu">'),
     ...nav,
     when(nav.length, '    </nav>'),
-    `    <a class="btn small" href="${esc(c.navCta.href)}">${esc(c.navCta.label)}</a>`,
+    `    <a class="btn small" href="${esc(link(c.navCta.href))}">${esc(c.navCta.label)}</a>`,
     '  </header>',
     '',
-    '  <main id="main">',
+    home ? '  <main id="main">' : `  <main id="main" class="subpage" data-page="${esc(site!.current)}">`,
     '    <!-- HERO — the first thing people see. Change the words between the tags. -->',
     '    <section class="hero" id="top">',
     '      <div class="hero-copy">',
@@ -271,8 +436,8 @@ export function renderMarkup(c: Content): string {
     `        <h1>${rich(c.headline)}</h1>`,
     when(c.lede, `        <p class="lede">${rich(c.lede)}</p>`),
     '        <div class="actions">',
-    `          <a class="btn" href="${esc(c.primary.href)}">${esc(c.primary.label)}</a>`,
-    when(c.secondary, `          <a class="btn ghost" href="${esc(c.secondary?.href ?? '')}">${esc(c.secondary?.label ?? '')}</a>`),
+    `          <a class="btn" href="${esc(link(c.primary.href))}">${esc(c.primary.label)}</a>`,
+    when(c.secondary, `          <a class="btn ghost" href="${esc(link(c.secondary?.href ?? ''))}">${esc(c.secondary?.label ?? '')}</a>`),
     '        </div>',
     '      </div>',
     `      <figure class="hero-media">${mediaInner(c.heroMedia, c.brand)}</figure>`,
@@ -294,6 +459,15 @@ export function renderMarkup(c: Content): string {
 
 export const MOTION_JS = `    // Adds .is-in to each section as it scrolls into view; body[data-motion] picks the style.
     document.body.classList.add('js');
+    // The tab icon: your logo letters on your accent color (no image file needed).
+    const icon = document.querySelector('link[rel="icon"]');
+    const mark = document.querySelector('.mark');
+    if (icon && mark) {
+      const css = getComputedStyle(document.body);
+      const letters = mark.textContent.trim().slice(0, 3).replace(/[<>&]/g, '');
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="' + css.getPropertyValue('--accent').trim() + '"/><text x="32" y="41" text-anchor="middle" font-family="' + css.fontFamily.replace(/"/g, '') + '" font-weight="700" font-size="' + (letters.length > 2 ? 24 : 30) + '" fill="' + css.getPropertyValue('--bg').trim() + '">' + letters + '</text></svg>';
+      icon.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    }
     const sections = document.querySelectorAll('main > section');
     sections.forEach((section) =>
       section.querySelectorAll('.card, .stat, .row, .shot').forEach((el, i) => el.style.setProperty('--i', i % 8))
@@ -352,6 +526,46 @@ export const INTERACT_JS = `    // How the page answers the cursor; body[data-in
           });
         }
       }, { passive: true });
+      // The menu button on small screens
+      document.addEventListener('click', function (e) {
+        var btn = e.target instanceof Element ? e.target.closest('.menu-btn') : null;
+        if (btn) {
+          var nav = btn.closest('.nav');
+          var open = nav.classList.toggle('is-open');
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        } else if (e.target instanceof Element && e.target.closest('.menu a')) {
+          var openNav = e.target.closest('.nav.is-open');
+          if (openNav) { openNav.classList.remove('is-open'); openNav.querySelector('.menu-btn').setAttribute('aria-expanded', 'false'); }
+        }
+      });
+      // Slider arrows
+      document.addEventListener('click', function (e) {
+        var arrow = e.target instanceof Element ? e.target.closest('.slide-btn') : null;
+        if (!arrow) return;
+        var slides = arrow.parentElement.querySelector('.slides');
+        var step = (slides.querySelector('.slide') || slides).getBoundingClientRect().width + 16;
+        slides.scrollBy({ left: arrow.classList.contains('next') ? step : -step, behavior: 'smooth' });
+      });
+      // Countdowns
+      function tickCountdown() {
+        document.querySelectorAll('[data-countdown]').forEach(function (el) {
+          var left = Math.max(0, new Date(el.getAttribute('data-countdown')).getTime() - Date.now());
+          var d = Math.floor(left / 86400000), h = Math.floor(left / 3600000) % 24, m = Math.floor(left / 60000) % 60, s = Math.floor(left / 1000) % 60;
+          var v = { days: d, hours: h, minutes: m, seconds: s };
+          el.querySelectorAll('[data-unit]').forEach(function (n) { n.textContent = isNaN(left) ? '–' : String(v[n.getAttribute('data-unit')]).padStart(2, '0'); });
+        });
+      }
+      tickCountdown();
+      setInterval(tickCountdown, 1000);
+      // Forms without a server: open the visitor's email app with the message filled in
+      document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-mail')) return;
+        e.preventDefault();
+        var data = new FormData(form), lines = [];
+        data.forEach(function (v, k) { lines.push(k + ': ' + v); });
+        location.href = 'mailto:' + form.getAttribute('data-mail') + '?subject=' + encodeURIComponent('Message from ' + document.title) + '&body=' + encodeURIComponent(lines.join('\\n'));
+      });
       document.addEventListener('click', function (e) {
         var shot = e.target instanceof Element ? e.target.closest('.shot') : null;
         if (!shot || typeof HTMLDialogElement === 'undefined') return;
@@ -374,11 +588,12 @@ export const SWITCHES_NOTE = `<!-- =============================================
        data-interact  ${INTERACTIONS.map((m) => m.id).join(' · ')}
      ================================================================= -->`;
 
-export function titleFor(c: Content): string {
+export function titleFor(c: Content, site?: SiteInfo): string {
+  if (site && site.current !== HOME) return `${plain(c.headline)} — ${plain(c.brand)}`;
   return `${plain(c.brand)} — ${plain(c.eyebrow || c.headline)}`;
 }
 
-export function renderDocument(g: Genome, c: Content, tokens: Tokens = tokensFor(g)): string {
+export function renderDocument(g: Genome, c: Content, tokens: Tokens = tokensFor(g), site?: SiteInfo): string {
   const sw = switchesFor(g);
   const faces = facesUsedIn(`${tokens['--font-display']} ${tokens['--font-body']}`);
   return `<!doctype html>
@@ -386,9 +601,13 @@ export function renderDocument(g: Genome, c: Content, tokens: Tokens = tokensFor
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(titleFor(c))}</title>
+  <title>${esc(titleFor(c, site))}</title>
   <meta name="description" content="${esc(plain(c.lede))}">
+  <meta property="og:title" content="${esc(titleFor(c, site))}">
+  <meta property="og:description" content="${esc(plain(c.lede))}">
+  <meta property="og:type" content="website">
   <meta name="generator" content="Kiln">
+  <link rel="icon" href="data:,">  <!-- the motion script draws a tab icon from your logo letters -->
 
   <!-- =================================================================
        1 · TOKENS — change these values to transform the whole site
@@ -410,7 +629,7 @@ ${ENGINE_CSS.trim()}
 
 ${SWITCHES_NOTE}
 <body class="site" data-form="${sw.form}" data-texture="${sw.texture}" data-motion="${sw.motion}" data-scene="${sw.scene}" data-interact="${sw.interact}">
-${renderMarkup(c)}
+${renderMarkup(c, site)}
 
   <!-- 4 · MOTION — fades sections in as you scroll (see data-motion) -->
   <script id="motion">

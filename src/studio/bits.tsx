@@ -5,8 +5,8 @@ import { useStudio } from './state';
 
 /** The exact line of code a control edits, with a jump into the editor. */
 export function CodeHint({ token, sw }: { token?: string; sw?: SwitchName }) {
-  const { doc, goToCode } = useStudio();
-  const src = doc.source;
+  const { page, goToCode } = useStudio();
+  const src = page.source;
   const range = token ? tokenValueRange(src, token) : sw ? switchValueRange(src, sw) : null;
   const value = token ? getToken(src, token) : sw ? getSwitch(src, sw) : null;
   const text = token ? (

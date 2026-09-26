@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiln launch kit</title>
+<style>
+  :root {
+    --bg: #f5efe6; --panel: #fffaf4; --ink: #231b15; --muted: #7a6c61; --line: #e6dccf;
+    --clay: #c4552f; --clay-soft: #f6e1d6; --ok: #2f7a55; --ok-soft: #e2f1e8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15110f; --panel: #1e1916; --ink: #f3ebe3; --muted: #a39489; --line: #332a25;
+      --clay: #ec8255; --clay-soft: #3a2219; --ok: #7cc49a; --ok-soft: #1b2e24; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { width: min(980px, 100%); margin: 0 auto; padding: 2.5rem 16px 4rem; }
+  h1 { margin: 0 0 .4rem; font: 600 2.2rem/1.1 Georgia, serif; letter-spacing: -.02em; }
+  .lede { margin: 0 0 1.6rem; color: var(--muted); max-width: 44rem; }
+  .links { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 2rem; }
+  .pill { padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); text-decoration: none; font-size: .88rem; }
+  h2 { margin: 2.2rem 0 .8rem; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--clay); }
+  .card { display: grid; gap: .7rem; padding: 1.1rem 1.2rem; margin-bottom: .9rem; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+  .card.done { opacity: .6; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .6rem; }
+  .where { font-weight: 700; font-size: 1.05rem; }
+  .when { font-size: .8rem; color: var(--muted); }
+  .rule { margin: 0; font-size: .84rem; color: var(--muted); }
+  .title { font-weight: 600; }
+  details { font-size: .9rem; }
+  summary { cursor: pointer; color: var(--muted); }
+  pre { margin: .6rem 0 0; padding: .8rem; border-radius: 10px; background: var(--bg); white-space: pre-wrap; font: 13px/1.5 ui-monospace, Menlo, monospace; max-height: 16rem; overflow: auto; }
+  .actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  button, .go { display: inline-flex; align-items: center; gap: .4rem; height: 36px; padding: 0 1rem; border-radius: 999px; font: 600 .88rem system-ui, sans-serif; cursor: pointer; text-decoration: none; }
+  .go { background: var(--clay); color: #fff; border: 0; }
+  button { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  label.check { display: inline-flex; gap: .4rem; align-items: center; font-size: .85rem; color: var(--muted); margin-left: auto; }
+  .note { padding: .9rem 1rem; border-radius: 12px; background: var(--clay-soft); font-size: .9rem; }
+  .toast { position: fixed; left: 50%; bottom: 1.2rem; translate: -50% 0; padding: .6rem 1rem; border-radius: 999px; background: #0d0b0a; color: #fff; font-size: .88rem; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kiln launch kit</h1>
+  <p class="lede">Each button opens a finished post in <strong>your</strong> browser, where you are logged in. Read it, change anything you like, then press Submit yourself. Space the posts out: one or two communities a day, and reply to every comment in the first hour.</p>
+  <div class="links">
+    <a class="pill" href="https://kiln-website-maker.vercel.app" target="_blank" rel="noopener">Live site ↗</a>
+    <a class="pill" href="https://github.com/devkancheti4-design/kiln" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+  <div class="note">Tip: a 20–30 second screen recording (spin the wheel → type your name → drag a number in the code → the 3D vase turns) gets far more attention than text. Attach it where the site allows videos.</div>
+  <div id="list"></div>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const SITE = 'https://kiln-website-maker.vercel.app';
+const REPO = 'https://github.com/devkancheti4-design/kiln';
+
+const posts = [
+  {
+    day: 'Today (Saturday)', where: 'r/webdev', when: 'Showoff Saturday only (Saturdays, UTC)',
+    rule: 'Self-promotion is allowed only on Saturdays. Pick the “Showoff Saturday” flair after posting.',
+    kind: 'reddit', sub: 'webdev',
+    title: '[Showoff Saturday] I built an offline website maker where one HTML file becomes 487 million different sites',
+    text: `Kiln is a free website maker that runs entirely in your browser. No AI, no account, no server, and it even works offline.
+
+Every site is the same semantic HTML. Twelve CSS custom properties (colors, fonts, radius, spacing…) plus five data-* words on <body> (layout, texture, motion, 3D scene, cursor effect) decide the look. Multiply the options and you get 487,710,720 working designs, each with a number that always rebuilds the same site.
+
+What you can do:
+- Spin a "potter's wheel" to throw random designs, and lock the parts you like
+- Put in your own words and photos
+- Edit the real code: drag numbers to scrub them, click color swatches, point at anything on the page to jump to its line
+- 25 short W3Schools-style lessons with challenges that check themselves
+- 3D hero scenes in plain WebGL (raymarched shapes, no three.js), with the light following your cursor
+- Download a single HTML file, a site folder, or a project split for VS Code with an AGENTS.md map
+
+The output is plain HTML/CSS/JS with no build step, so it's yours.
+
+Try it: ${SITE}
+Open source (MIT): ${REPO}
+
+Feedback welcome, especially on the CSS architecture. All 10 layouts use identical markup, CSS Zen Garden style.`
+  },
+  {
+    day: 'Today', where: 'X (Twitter)', when: 'any time', rule: 'Attach the screen recording if you have one.',
+    kind: 'x',
+    text: `I built Kiln: a free, offline website maker.
+
+487,710,720 real websites, all from one HTML file + 12 CSS tokens. Pick one, put your name in, change the code with a live guide, download plain HTML.
+
+3D heroes in pure WebGL. No AI, no account. Open source (MIT).`,
+    url: SITE
+  },
+  {
+    day: 'Today', where: 'LinkedIn', when: 'weekday mornings do best', rule: 'Add the recording as a video for more reach.',
+    kind: 'linkedin',
+    text: `I just launched Kiln, a free website maker that works completely offline.
+
+Instead of templates, it has a catalog of every combination of a few hand-made pieces: 10 layouts × 24 color glazes × 12 font pairs × 7 3D scenes and more, 487,710,720 websites in total. You pick one, put in your own name and words, and download plain HTML you own.
+
+It also teaches: every slider shows the exact line of code it changes, and there are 25 short lessons with live challenges. Great for students and small businesses who want a real site without a subscription.
+
+Try it: ${SITE}`
+  },
+  {
+    day: 'Tomorrow', where: 'Hacker News: Show HN', when: 'weekday 8–10am US Eastern is best', rule: 'Title must start with “Show HN:”. Post the first comment yourself explaining how it works.',
+    kind: 'hn',
+    title: 'Show HN: Kiln – an offline website maker with 487M designs from one HTML file',
+    url: SITE,
+    text: `First comment to post under it:
+
+Hi HN. Kiln is a website maker built around the CSS Zen Garden idea. Every site is the same semantic HTML; 12 custom properties and five data-* attributes on <body> pick layout, texture, motion, a WebGL hero scene and cursor effects. The catalog is every combination (487,710,720), indexed by a mixed-radix number and browsed through a Feistel permutation so neighbours differ on every axis.
+
+The app treats the HTML source as the single source of truth: every panel is a patch on the file, so what you see is exactly what you download. There's an editor where you can drag numbers to scrub them, an inspect mode that maps any element to its source offset, and a guide whose challenges check the edited source.
+
+The 3D scenes are SDFs raymarched in one WebGL1 fragment shader, lit with the site's own colors. The whole app also builds into a single 2 MB HTML file that works offline.
+
+MIT-licensed: ${REPO}`
+  },
+  {
+    day: 'Day 3', where: 'r/SideProject', when: 'any day', rule: 'Self-promotion is fine here. Say what feedback you want.',
+    kind: 'reddit', sub: 'SideProject',
+    title: 'I made a free offline website maker: 487M ready sites, and it teaches you the code as you change it',
+    text: `I wanted a site builder that doesn't lock you in and doesn't need the internet.
+
+Kiln has a catalog of every combination of a few hand-made pieces (10 layouts × 24 color glazes × 12 font pairs × 7 3D scenes…) = 487,710,720 websites. Pick one, put your name in, change anything, and download plain HTML you own.
+
+Every slider shows the exact line of code it edits, so you learn by watching. There's also a daily drop: 12 new designs every day, the same for everyone in the world, so you can compare what you made with friends.
+
+Try it: ${SITE}
+
+What would make you actually use it?`
+  },
+  {
+    day: 'Day 4', where: 'r/css', when: 'any day', rule: 'Lead with the technique, not the product.',
+    kind: 'reddit', sub: 'css',
+    title: 'Automatic black/white button text from any accent color with relative oklch(), and other tricks from a 10-layout CSS engine',
+    text: `--on-accent: oklch(from var(--accent) clamp(0, (0.6 - l) * 1000, 1) 0 0);
+
+That one line picks black or white text for any accent. It's part of an engine where 12 tokens and one data-form attribute restyle identical markup into 10 layouts: container queries throughout, color-mix() surfaces, :has() for bento tiles, and 12 CSS-only gradient "illustrations" that recolor with the palette.
+
+The whole stylesheet is readable on purpose, since the app teaches it: ${SITE}
+Source: ${REPO}`
+  },
+  {
+    day: 'Day 5', where: 'r/vibecoding', when: 'any day', rule: 'Keep it a useful tip first.',
+    kind: 'reddit', sub: 'vibecoding',
+    title: 'Give your AI agent a one-page map instead of your whole codebase. My site exports cut agent context about 6×',
+    text: `My website maker (Kiln, offline, no AI inside) exports sites as a small project: index.html (9 KB), css/tokens.css (1 KB), a big css/engine.css, and an AGENTS.md that says "colors are in tokens.css, layout is one word on <body>, don't read engine.css unless you're adding a layout."
+
+In Antigravity/Cursor, the agent reads about 14 KB instead of 79 KB for most edits, so it's faster and cheaper. Kiln can also link a folder two-way: edit in your IDE and the preview updates live.
+
+${SITE}`
+  },
+  {
+    day: 'Day 6', where: 'DEV (dev.to) article', when: 'any day', rule: 'Opens the editor pre-filled as a draft. Add a cover image before publishing.',
+    kind: 'devto',
+    title: 'One HTML file, 487 million websites: how I built Kiln',
+    text: `Kiln is a free, offline website maker. Every site is the same semantic HTML, restyled by 12 CSS custom properties and five data-* switches on <body>.
+
+## The enumeration
+Every design is a point in an 11-axis space: 12 kinds × 10 layouts × 24 glazes × 2 moods × 12 type pairs × 4 corner styles × 3 spacings × 7 textures × 3 motions × 7 3D scenes × 4 cursor styles = 487,710,720. A design's number is its mixed-radix index, and the gallery browses it through a Feistel permutation so neighbours look different.
+
+## Source as the single source of truth
+Every control in the studio is a patch on the HTML file itself, so what you see is exactly what you download, and every slider can show the line it changed.
+
+## 3D without libraries
+The hero scenes are signed-distance fields raymarched in one WebGL1 fragment shader, lit with the site's own three colors.
+
+Try it: ${SITE}
+Open source (MIT): ${REPO}`
+  },
+];
+
+const enc = encodeURIComponent;
+function openUrl(p) {
+  switch (p.kind) {
+    case 'reddit': return `https://old.reddit.com/r/${p.sub}/submit?selftext=true&title=${enc(p.title)}&text=${enc(p.text)}`;
+    case 'x': return `https://x.com/intent/post?text=${enc(p.text)}&url=${enc(p.url)}`;
+    case 'linkedin': return `https://www.linkedin.com/feed/?shareActive=true&text=${enc(p.text)}`;
+    case 'hn': return `https://news.ycombinator.com/submitlink?u=${enc(p.url)}&t=${enc(p.title)}`;
+    case 'devto': return `https://dev.to/new?prefill=${enc(`---\ntitle: ${p.title}\npublished: false\ntags: webdev, css, webgl, showdev\n---\n\n${p.text}`)}`;
+  }
+}
+
+const done = (() => { try { return JSON.parse(localStorage.getItem('kiln-launch-done') || '[]'); } catch { return []; } })();
+const save = () => { try { localStorage.setItem('kiln-launch-done', JSON.stringify(done)); } catch {} };
+const toast = (t) => { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 1800); };
+
+const list = document.getElementById('list');
+let lastDay = '';
+posts.forEach((p, i) => {
+  if (p.day !== lastDay) { const h = document.createElement('h2'); h.textContent = p.day; list.append(h); lastDay = p.day; }
+  const id = p.where;
+  const card = document.createElement('section');
+  card.className = 'card' + (done.includes(id) ? ' done' : '');
+  const body = (p.title ? p.title + '\n\n' : '') + p.text + (p.kind === 'x' ? '\n' + p.url : '');
+  card.innerHTML = `
+    <div class="head"><span class="where"></span><span class="when"></span></div>
+    <p class="rule"></p>
+    ${p.title ? '<div class="title"></div>' : ''}
+    <details><summary>Show the full text</summary><pre></pre></details>
+    <div class="actions">
+      <a class="go" target="_blank" rel="noopener">Open pre-filled post ↗</a>
+      <button type="button" data-copy>Copy text</button>
+      <label class="check"><input type="checkbox"> Posted</label>
+    </div>`;
+  card.querySelector('.where').textContent = p.where;
+  card.querySelector('.when').textContent = p.when;
+  card.querySelector('.rule').textContent = p.rule;
+  if (p.title) card.querySelector('.title').textContent = p.title;
+  card.querySelector('pre').textContent = p.kind === 'hn' ? p.text : body;
+  card.querySelector('.go').href = openUrl(p);
+  card.querySelector('[data-copy]').onclick = () => navigator.clipboard.writeText(p.kind === 'hn' ? p.text : body).then(() => toast('Copied'), () => toast('Copy blocked — select the text instead'));
+  const box = card.querySelector('input');
+  box.checked = done.includes(id);
+  box.onchange = () => { if (box.checked) done.push(id); else done.splice(done.indexOf(id), 1); card.classList.toggle('done', box.checked); save(); };
+  list.append(card);
+});
+</script>
+</body>
+</html>

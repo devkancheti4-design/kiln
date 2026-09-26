@@ -10,7 +10,7 @@ import { syncFonts } from '../engine/patch';
 import { facesUsedIn } from '../engine/typefaces';
 import { dataUrlToBytes, slugify } from '../engine/exporter';
 import type { Content } from '../engine/content';
-import { joinSite, splitSite } from '../engine/split';
+import { joinProject, splitProject } from '../engine/split';
 import { getFolder, setFolder } from './db';
 
 type Perm = 'granted' | 'denied' | 'prompt';
@@ -58,7 +58,8 @@ async function exists(dir: FileSystemDirectoryHandle, path: string): Promise<boo
 
 const README = `This folder is linked to Kiln — edit it anywhere.
 
-  index.html       the page (words, sections, pictures) + the design switches on <body>
+  index.html       the home page (words, sections, pictures) + the design switches on <body>
+  about.html …     any other pages — add a new one by creating name.html here
   css/tokens.css   12 values that restyle everything
   css/engine.css   the layouts, textures and art (big — you rarely need it)
   js/              motion, cursor effects, 3D scene
@@ -69,10 +70,20 @@ Save a file and the Kiln studio updates live. Change things in Kiln and they
 are written back here.
 `;
 
-const TEXT_FILES = ['index.html', 'css/tokens.css', 'css/fonts.css', 'css/engine.css', 'js/motion.js', 'js/interact.js', 'js/scene.js'];
+const SHARED_FILES = ['css/tokens.css', 'css/fonts.css', 'css/engine.css', 'js/motion.js', 'js/interact.js', 'js/scene.js'];
+
+export interface SyncPage {
+  slug: string;
+  source: string;
+  content: Content | null;
+}
+
+/** What the folder should contain for these pages, as one comparable string. */
+const projectOf = (pages: SyncPage[]) => splitProject(pages.map((p) => ({ ...p, source: syncFonts(p.source) })));
+const keyOf = (pages: { slug: string; source: string }[]) => pages.map((p) => `${p.slug}\n${p.source}`).join('\n\n');
 
 /** Ask for a parent folder and create "<slug>/" inside it. */
-export async function linkNewFolder(pieceId: string, title: string, source: string, assets: Assets, content: Content | null): Promise<FileSystemDirectoryHandle | null> {
+export async function linkNewFolder(pieceId: string, title: string, pages: SyncPage[], assets: Assets): Promise<FileSystemDirectoryHandle | null> {
   const pick = (window as unknown as { showDirectoryPicker: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
   let parent: FileSystemDirectoryHandle;
   try {
@@ -81,15 +92,15 @@ export async function linkNewFolder(pieceId: string, title: string, source: stri
     return null; // cancelled
   }
   const dir = await parent.getDirectoryHandle(slugify(title), { create: true });
-  await writeSite(dir, source, assets, content, true);
+  await writeSite(dir, pages, assets, true);
   await setFolder(pieceId, dir);
   return dir;
 }
 
-/** Writes the split project; returns the joined source it represents (for change detection). */
-export async function writeSite(dir: FileSystemDirectoryHandle, source: string, assets: Assets, content: Content | null, full = false): Promise<string> {
-  const html = syncFonts(source);
-  const files = splitSite(html, content);
+/** Writes the split project; returns the key of the pages it represents (for change detection). */
+export async function writeSite(dir: FileSystemDirectoryHandle, pages: SyncPage[], assets: Assets, full = false): Promise<string> {
+  const files = projectOf(pages);
+  const html = pages.map((p) => syncFonts(p.source)).join('\n');
   for (const [path, text] of Object.entries(files)) {
     if (!full && path === 'AGENTS.md' && (await exists(dir, path))) continue; // people may edit it
     if (!full && path !== 'AGENTS.md') {
@@ -112,7 +123,7 @@ export async function writeSite(dir: FileSystemDirectoryHandle, source: string, 
     if (html.includes(path) && (full || !(await exists(dir, path)))) await writeFile(dir, path, dataUrlToBytes(url));
   }
   if (full) await writeFile(dir, 'README.txt', README);
-  return joinSite(files);
+  return keyOf(joinProject(files));
 }
 
 async function fileHandle(dir: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle> {
@@ -122,11 +133,18 @@ async function fileHandle(dir: FileSystemDirectoryHandle, path: string): Promise
   return d.getFileHandle(parts[parts.length - 1]);
 }
 
-/** Reads the project back; returns a stamp of modification times and the joined source. */
+/** Reads the project back (every *.html plus the shared css/js); returns a modification stamp and the files. */
 async function readSite(dir: FileSystemDirectoryHandle): Promise<{ stamp: string; files: Record<string, string> | null }> {
   const mods: string[] = [];
   const handles: [string, File][] = [];
-  for (const path of TEXT_FILES) {
+  const htmls: string[] = [];
+  try {
+    const d = dir as DirHandle;
+    if (d.values) for await (const h of d.values()) if (h.kind === 'file' && /^[^/]+\.html$/.test(h.name)) htmls.push(h.name);
+  } catch {
+    /* unreadable folder */
+  }
+  for (const path of [...htmls.sort(), ...SHARED_FILES]) {
     try {
       const f = await (await fileHandle(dir, path)).getFile();
       mods.push(`${path}:${f.lastModified}:${f.size}`);
@@ -171,20 +189,19 @@ export type FolderState = 'none' | 'linked' | 'needs-permission' | 'error';
 export function useFolderSync(
   pieceId: string,
   enabled: boolean,
-  source: string,
+  pages: SyncPage[],
   assets: Assets,
-  content: Content | null,
-  onExternalSource: (src: string) => void,
+  onExternalPages: (pages: { slug: string; source: string }[]) => void,
   onExternalAssets: (a: Assets) => void,
 ) {
   const [handle, setHandle] = useState<DirHandle | null>(null);
   const [state, setState] = useState<FolderState>('none');
   const [lastSync, setLastSync] = useState<number | null>(null);
-  const written = useRef<string | null>(null); // joined source last known to be in the folder
+  const written = useRef<string | null>(null); // key of the pages last known to be in the folder
   const stamp = useRef('');
   const busy = useRef(false);
-  const latest = useRef({ source, assets, content, onExternalSource, onExternalAssets });
-  latest.current = { source, assets, content, onExternalSource, onExternalAssets };
+  const latest = useRef({ pages, assets, onExternalPages, onExternalAssets });
+  latest.current = { pages, assets, onExternalPages, onExternalAssets };
 
   useEffect(() => {
     if (!canLinkFolders) return;
@@ -209,9 +226,9 @@ export function useFolderSync(
 
   const link = useCallback(
     async (title: string) => {
-      const d = (await linkNewFolder(pieceId, title, latest.current.source, latest.current.assets, latest.current.content)) as DirHandle | null;
+      const d = (await linkNewFolder(pieceId, title, latest.current.pages, latest.current.assets)) as DirHandle | null;
       if (!d) return false;
-      written.current = joinSite(splitSite(syncFonts(latest.current.source), latest.current.content));
+      written.current = keyOf(joinProject(projectOf(latest.current.pages)));
       stamp.current = (await readSite(d)).stamp;
       setHandle(d);
       setState('linked');
@@ -228,14 +245,15 @@ export function useFolderSync(
   }, [pieceId]);
 
   // studio -> folder
+  const pagesKey = keyOf(pages);
   useEffect(() => {
     if (!enabled || state !== 'linked' || !handle) return;
-    const joined = joinSite(splitSite(syncFonts(source), latest.current.content));
-    if (joined === written.current) return;
+    const key = keyOf(joinProject(projectOf(latest.current.pages)));
+    if (key === written.current) return;
     const t = setTimeout(async () => {
       busy.current = true;
       try {
-        written.current = await writeSite(handle, latest.current.source, latest.current.assets, latest.current.content);
+        written.current = await writeSite(handle, latest.current.pages, latest.current.assets);
         stamp.current = (await readSite(handle)).stamp;
         setLastSync(Date.now());
       } catch {
@@ -245,7 +263,8 @@ export function useFolderSync(
       }
     }, 500);
     return () => clearTimeout(t);
-  }, [enabled, state, handle, source, assets]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, state, handle, pagesKey, assets]);
 
   // folder -> studio
   useEffect(() => {
@@ -257,11 +276,12 @@ export function useFolderSync(
         const now = await readSite(handle);
         if (now.stamp !== stamp.current && now.files) {
           stamp.current = now.stamp;
-          const joined = joinSite(now.files);
-          if (written.current === null) written.current = joined;
-          else if (joined !== written.current) {
-            written.current = joined;
-            latest.current.onExternalSource(joined);
+          const joined = joinProject(now.files);
+          const key = keyOf(joined);
+          if (written.current === null) written.current = key;
+          else if (key !== written.current) {
+            written.current = key;
+            latest.current.onExternalPages(joined);
             setLastSync(Date.now());
           }
         }

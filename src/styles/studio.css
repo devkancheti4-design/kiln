@@ -345,7 +345,37 @@
 .s-fontpick { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: 0.6rem; font-size: 0.8rem; color: var(--k-text-2); }
 .s-fontpick select { padding: 0.45rem 0.55rem; border: 1px solid var(--k-line-2); border-radius: 9px; background: var(--k-bg-2); font-size: 0.84rem; }
 
+/* pages */
+.s-pages { display: grid; gap: 0.3rem; }
+.s-pageitem { display: flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.25rem 0.2rem 0.3rem; border: 1px solid var(--k-line); border-radius: 11px; background: var(--k-bg-2); }
+.s-pageitem.is-on { border-color: var(--k-clay); background: var(--k-clay-soft); }
+.s-pageitem-open { flex: 1; display: grid; gap: 0.05rem; min-width: 0; padding: 0.35rem 0.45rem; border: 0; background: none; text-align: left; }
+.s-pageitem-file { font-size: 0.82rem; font-weight: 600; color: var(--k-text); }
+.s-pageitem-nav { font-size: 0.72rem; color: var(--k-muted); }
+.s-pagebar {
+  position: absolute;
+  left: 0.7rem;
+  bottom: 0.7rem;
+  z-index: 6;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(12, 10, 9, 0.82);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+}
+.s-pagebar button { height: 28px; padding: 0 0.7rem; border: 0; border-radius: 999px; background: none; color: #cdbfb3; font: 600 0.74rem var(--k-mono); }
+.s-pagebar button:hover { color: #fff; }
+.s-pagebar button.is-on { background: var(--k-clay); color: #1a0f09; }
+.s-code-pages { padding: 0.1rem 0.3rem; border: 1px solid var(--k-line-2); border-radius: 7px; background: var(--k-bg-2); font: 600 0.82rem var(--k-mono); color: var(--k-text); }
+
 /* carve */
+.s-checks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; }
+.s-media-now > video { width: 96px; height: 72px; border-radius: 9px; object-fit: cover; }
+.s-media-compact .s-media-now > video { width: 72px; height: 54px; }
+.s-media-none { display: grid; place-items: center; font: 600 1.4rem var(--k-display); color: var(--k-muted); background: var(--k-bg-2); }
 .s-row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; align-items: end; }
 .s-row-x { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
 .s-fake-label { font-size: 0.78rem; font-weight: 560; color: var(--k-text-2); }

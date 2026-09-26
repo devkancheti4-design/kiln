@@ -27,22 +27,32 @@ interface Kiln {
   setBodyAttrs: (attrs: Record<string, string>) => void;
   swapMarkup: (html: string) => void;
   revealAll: () => void;
+  scrollTo: (hash: string) => void;
+  setTitle: (html: string) => void;
 }
 
 export function Preview({
   source,
+  pageKey = 'index',
+  scrollTo = null,
   assets,
   device,
   inspect,
   highlight,
   onPick,
+  onLink,
 }: {
   source: string;
+  /** which page is shown; changing it scrolls to `scrollTo` once the new page is in */
+  pageKey?: string;
+  scrollTo?: string | null;
   assets: Assets;
   device: Device;
   inspect: boolean;
   highlight: number | null; // absolute offset of a tag to outline, or null
   onPick: (p: PickInfo) => void;
+  /** a link to another file was clicked; return true if handled */
+  onLink?: (href: string) => boolean;
 }) {
   const frames = [useRef<HTMLIFrameElement>(null), useRef<HTMLIFrameElement>(null)];
   const [front, setFront] = useState(0);
@@ -52,8 +62,9 @@ export function Preview({
   const pending = useRef<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 1000, h: 700 });
-  const latest = useRef({ source, assets, inspect, highlight, onPick });
-  latest.current = { source, assets, inspect, highlight, onPick };
+  const latest = useRef({ source, assets, inspect, highlight, onPick, onLink });
+  latest.current = { source, assets, inspect, highlight, onPick, onLink };
+  const pendingScroll = useRef<string | null>(null);
 
   const kiln = (i = frontRef.current): Kiln | null => {
     const w = frames[i].current?.contentWindow as (Window & { __kiln?: Kiln }) | null;
@@ -65,7 +76,10 @@ export function Preview({
       const r = markupRange(latest.current.source);
       latest.current.onPick({ ...p, offset: (r?.from ?? 0) + p.offset });
     };
-    k.onLink = (href) => toast(<>Links to other pages open in your downloaded site — <code className="k-code-inline">{href.slice(0, 40)}</code></>);
+    k.onLink = (href) => {
+      if (latest.current.onLink?.(href)) return;
+      toast(<>Links to other sites open in your downloaded site — <code className="k-code-inline">{href.slice(0, 40)}</code></>);
+    };
     k.setInspect(latest.current.inspect);
     applyHighlight(k);
   };
@@ -92,7 +106,10 @@ export function Preview({
         wire(k);
         if (!first) k.revealAll();
       }
-      iframe.contentWindow?.scrollTo(0, prevScroll);
+      if (pendingScroll.current) {
+        k?.scrollTo(pendingScroll.current);
+        pendingScroll.current = null;
+      } else iframe.contentWindow?.scrollTo(0, prevScroll);
       shown.current = src;
       frontRef.current = back;
       setFront(back);
@@ -119,6 +136,7 @@ export function Preview({
     if (plan.tokens !== undefined) k.setStyle('tokens', plan.tokens);
     if (plan.engine !== undefined) k.setStyle('engine', plan.engine);
     if (plan.attrs) k.setBodyAttrs(plan.attrs);
+    if (plan.title !== undefined) k.setTitle(plan.title);
     if (plan.markup) {
       // markup may reference pictures; resolve them for the frame
       let html = annotatedMarkup(src);
@@ -127,12 +145,21 @@ export function Preview({
       applyHighlight(k);
     }
     shown.current = src;
+    if (pendingScroll.current) {
+      k.scrollTo(pendingScroll.current);
+      pendingScroll.current = null;
+    }
   };
 
+  const lastPage = useRef(pageKey);
   useEffect(() => {
+    if (pageKey !== lastPage.current) {
+      lastPage.current = pageKey;
+      pendingScroll.current = scrollTo || '#top';
+    }
     sync(source);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+  }, [source, pageKey]);
 
   // New pictures need a reload (their data URLs are resolved into the document).
   const assetKeys = Object.keys(assets).join('|');

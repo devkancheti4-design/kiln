@@ -2,7 +2,7 @@
 import { fontBytes, fontLicense, fontUrl } from './fonts';
 import type { Content } from './content';
 import { styleRange, syncFonts } from './patch';
-import { splitSite } from './split';
+import { splitProject } from './split';
 import { fontFaceRule, fontFilesFor } from './render';
 import { facesUsedIn } from './typefaces';
 import { zip } from './zip';
@@ -45,12 +45,12 @@ export function slugify(s: string): string {
   );
 }
 
-const README = (title: string) => `${title}
+const README = (title: string, slugs: string[] = ['index']) => `${title}
 ${'='.repeat(title.length)}
 
 This folder is a complete website. It works offline — no internet needed.
 
-  index.html   the page (open it in any browser)
+${slugs.map((s, i) => `  ${`${s}.html`.padEnd(13)}${i === 0 ? 'the home page (open it in any browser)' : 'a page (linked from the menu)'}`).join('\n')}
   fonts/       the fonts it uses, with their open licenses
   images/      your pictures (if you added any)
 
@@ -70,27 +70,39 @@ whole design; the words live between the tags further down.
 Made with Kiln.
 `;
 
-export async function buildZip(title: string, source: string, assets: Assets): Promise<Uint8Array> {
-  const html = syncFonts(source);
+export interface ExportPage {
+  slug: string;
+  source: string;
+  content: Content | null;
+}
+
+async function fontEntries(html: string) {
   const faces = facesUsedIn(html);
-  const entries: { path: string; data: Uint8Array | string }[] = [{ path: 'index.html', data: html }];
+  const entries: { path: string; data: Uint8Array | string }[] = [];
   for (const f of fontFilesFor(faces)) entries.push({ path: f.path, data: await fontBytes(f.file) });
   for (const face of faces) entries.push({ path: `fonts/LICENSE-${face.id}.txt`, data: fontLicense(face.id) });
-  for (const path of usedAssets(html, assets)) entries.push({ path, data: dataUrlToBytes(assets[path]) });
-  entries.push({ path: 'README.txt', data: README(title) });
+  return entries;
+}
+
+/** A website folder: index.html (+ about.html …), fonts/, images/. Each page is self-contained. */
+export async function buildZip(title: string, pages: ExportPage[], assets: Assets): Promise<Uint8Array> {
+  const htmls = pages.map((p) => ({ slug: p.slug, html: syncFonts(p.source) }));
+  const all = htmls.map((h) => h.html).join('\n');
+  const entries: { path: string; data: Uint8Array | string }[] = htmls.map((h) => ({ path: `${h.slug}.html`, data: h.html }));
+  entries.push(...(await fontEntries(all)));
+  for (const path of usedAssets(all, assets)) entries.push({ path, data: dataUrlToBytes(assets[path]) });
+  entries.push({ path: 'README.txt', data: README(title, pages.map((p) => p.slug)) });
   return zip(entries);
 }
 
-/** A tidy project for code editors and AI agents: index.html, css/, js/, AGENTS.md, fonts/, images/. */
-export async function buildProjectZip(title: string, source: string, assets: Assets, content: Content | null): Promise<Uint8Array> {
-  const html = syncFonts(source);
-  const files = splitSite(html, content);
-  const faces = facesUsedIn(html);
+/** A tidy project for code editors and AI agents: html pages, css/, js/, AGENTS.md, fonts/, images/. */
+export async function buildProjectZip(title: string, pages: ExportPage[], assets: Assets): Promise<Uint8Array> {
+  const files = splitProject(pages.map((p) => ({ ...p, source: syncFonts(p.source) })));
+  const all = pages.map((p) => p.source).join('\n');
   const entries: { path: string; data: Uint8Array | string }[] = Object.entries(files).map(([path, data]) => ({ path, data }));
-  for (const f of fontFilesFor(faces)) entries.push({ path: f.path, data: await fontBytes(f.file) });
-  for (const face of faces) entries.push({ path: `fonts/LICENSE-${face.id}.txt`, data: fontLicense(face.id) });
-  for (const path of usedAssets(html, assets)) entries.push({ path, data: dataUrlToBytes(assets[path]) });
-  entries.push({ path: 'README.txt', data: README(title).replace('  index.html   the page (open it in any browser)', '  index.html   the page (open it in any browser)\n  css/ js/     styles and scripts, one job per file\n  AGENTS.md    a short map for AI coding agents') });
+  entries.push(...(await fontEntries(all)));
+  for (const path of usedAssets(all, assets)) entries.push({ path, data: dataUrlToBytes(assets[path]) });
+  entries.push({ path: 'README.txt', data: README(title, pages.map((p) => p.slug)).replace('  fonts/       the fonts it uses', '  css/ js/     styles and scripts, one job per file\n  AGENTS.md    a short map for AI coding agents\n  fonts/       the fonts it uses') });
   return zip(entries);
 }
 
@@ -110,6 +122,14 @@ export async function buildSingleFile(source: string, assets: Assets): Promise<s
   }
   for (const path of usedAssets(html, assets)) html = html.split(path).join(assets[path]);
   return html;
+}
+
+/** Every page as a standalone file (fonts and pictures inside), zipped; they link to each other by name. */
+export async function buildStandaloneZip(title: string, pages: ExportPage[], assets: Assets): Promise<Uint8Array> {
+  const entries: { path: string; data: Uint8Array | string }[] = [];
+  for (const p of pages) entries.push({ path: `${p.slug}.html`, data: await buildSingleFile(p.source, assets) });
+  entries.push({ path: 'README.txt', data: README(title, pages.map((p) => p.slug)).replace('  fonts/       the fonts it uses, with their open licenses\n  images/      your pictures (if you added any)\n', '  (fonts and pictures are inside each file)\n') });
+  return zip(entries);
 }
 
 export function download(filename: string, data: Uint8Array | string, type: string) {

@@ -9,9 +9,9 @@ import { CodeHint, PanelSection, parseNum } from './bits';
 import { useStudio } from './state';
 
 export function GlazePanel() {
-  const { doc, patch, seal } = useStudio();
-  const src = doc.source;
-  const axes = readAxes(src, doc.content);
+  const { page, patch, seal } = useStudio();
+  const src = page.source;
+  const axes = readAxes(src, page.content);
   const t = readTokens(src);
   const mode = t['color-scheme'] === 'dark' ? 1 : 0;
   const bg = t['--bg'] ?? '#ffffff';

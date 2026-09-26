@@ -258,7 +258,11 @@ export const SCENE_JS = `    // A 3D object in the hero, drawn with plain WebGL.
         var s = getComputedStyle(document.body);
         colors = ['--bg', '--ink', '--accent'].map(function (n) { return rgb(s.getPropertyValue(n).trim()); });
       }
-      var io = new IntersectionObserver(function (e) { onScreen = e[0].isIntersecting; if (onScreen) tick(); });
+      var io = new IntersectionObserver(function (entries) {
+        // entries may mention an old, removed hero as well as the current one
+        for (var i = 0; i < entries.length; i++) if (entries[i].target === host) onScreen = entries[i].isIntersecting;
+        if (onScreen) tick();
+      });
       function mount() {
         host = document.querySelector('.hero-media');
         if (!host) return false;
@@ -303,7 +307,8 @@ export const SCENE_JS = `    // A 3D object in the hero, drawn with plain WebGL.
         if (reduce) tick();
       }, { passive: true });
       document.addEventListener('visibilitychange', tick);
-      new MutationObserver(tick).observe(document.body, { attributes: true, attributeFilter: ['data-scene'] });
+      // data-scene changes, or the page markup being replaced (as the Kiln studio does), restart the loop
+      new MutationObserver(tick).observe(document.body, { attributes: true, attributeFilter: ['data-scene'], childList: true });
       tick();
     })();`;
 

@@ -165,3 +165,105 @@ describe('split project for editors and agents', () => {
     expect(md.length).toBeLessThan(6000);
   });
 });
+
+import { pageStarter, rerenderPages, siteInfo, syncPages, uniqueSlug, type PageDoc } from '../src/engine/pages';
+import { getSwitch as gsw, setToken as stok, setSwitch as ssw } from '../src/engine/patch';
+import { HOME } from '../src/engine/render';
+import { joinProject, splitProject } from '../src/engine/split';
+
+describe('multi-page sites', () => {
+  const g = genomeAt(329_208_973);
+  const c = structuredClone(KINDS[g.kind].content);
+  const homeSrc = renderDocument(g, c);
+  const pages0: PageDoc[] = [{ slug: HOME, nav: '', source: homeSrc, content: c }];
+  const about = pageStarter('about', c, 'About');
+  const pages = rerenderPages([...pages0, { slug: 'about', nav: 'About', source: homeSrc, content: about }], () => false);
+
+  it('a single page renders exactly as before', () => {
+    expect(renderMarkup(c, siteInfo(pages0, HOME))).toBe(renderMarkup(c));
+  });
+
+  it('the menu links pages together and inner pages point home', () => {
+    const home = pages[0].source;
+    const inner = pages[1].source;
+    expect(home).toContain('<a href="about.html">About</a>');
+    expect(inner).toContain('<a href="about.html" aria-current="page">About</a>');
+    expect(inner).toContain('<a href="index.html#shop">Shop</a>'); // the home page's menu, repeated
+    expect(inner).toContain('class="brand" href="index.html"');
+    expect(inner).toContain('<main id="main" class="subpage" data-page="about">');
+    expect(inner).toContain('href="index.html#shop"'); // the shared top-bar button points home
+    expect(identify(home, c)).toEqual(g); // the home page is still a catalog design
+  });
+
+  it('design changes on one page reach every page', () => {
+    const changed = pages.map((p) => (p.slug === 'about' ? { ...p, source: ssw(stok(p.source, '--accent', '#123456'), 'form', 'poster') } : p));
+    const synced = syncPages(changed, 'about');
+    expect(getToken(synced[0].source, '--accent')).toBe('#123456');
+    expect(gsw(synced[0].source, 'form')).toBe('poster');
+    expect(getMarkup(synced[0].source)).toBe(getMarkup(pages[0].source)); // words untouched
+  });
+
+  it('round-trips through a split project', () => {
+    const files = splitProject(pages.map((p) => ({ slug: p.slug, source: p.source, content: p.content })));
+    expect(Object.keys(files)).toEqual(expect.arrayContaining(['index.html', 'about.html', 'css/tokens.css', 'AGENTS.md']));
+    expect(files['AGENTS.md']).toContain('about.html');
+    const back = joinProject(files);
+    expect(back.map((p) => p.slug)).toEqual(['index', 'about']);
+    expect(back[0].source).toBe(pages[0].source);
+    expect(back[1].source).toBe(pages[1].source);
+  });
+
+  it('makes unique file names', () => {
+    expect(uniqueSlug('About', ['index'])).toBe('about');
+    expect(uniqueSlug('About', ['index', 'about'])).toBe('about-2');
+    expect(uniqueSlug('Index', ['index'])).toBe('home');
+  });
+});
+
+import { embedSrc, renderProse } from '../src/engine/render';
+
+describe('building blocks', () => {
+  it('turns normal links into embeddable ones', () => {
+    expect(embedSrc('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+    expect(embedSrc('https://youtu.be/dQw4w9WgXcQ?t=4')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+    expect(embedSrc('https://vimeo.com/123456')).toBe('https://player.vimeo.com/video/123456');
+    expect(embedSrc('https://open.spotify.com/album/abc123')).toBe('https://open.spotify.com/embed/album/abc123');
+    expect(embedSrc('https://www.google.com/maps/place/Auroville/@12,79,15z')).toBe('https://maps.google.com/maps?q=Auroville&output=embed');
+    expect(embedSrc('Banjara Hills Hyderabad')).toContain('output=embed');
+    expect(embedSrc('javascript:alert(1)')).toBe('#');
+  });
+
+  it('renders article text safely', () => {
+    const html = renderProse('Hello **world** & <b>x</b>\n\n## Heading\n\n- one\n- two\n\n> said\n\n![A cat](images/cat.jpg)\n\n[site](https://a.b) [bad](javascript:x)', '');
+    expect(html).toContain('<p>Hello <strong>world</strong> &amp; &lt;b&gt;x&lt;/b&gt;</p>');
+    expect(html).toContain('<h3>Heading</h3>');
+    expect(html).toContain('<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>');
+    expect(html).toContain('<blockquote><p>said</p></blockquote>');
+    expect(html).toContain('<figure><img src="images/cat.jpg" alt="A cat" loading="lazy"></figure>');
+    expect(html).toContain('<a href="https://a.b">site</a>');
+    expect(html).toContain('<a href="#">bad</a>');
+  });
+
+  it('renders every new section type and multi-page pieces stay consistent', () => {
+    const g = genomeAt(1234);
+    const c = structuredClone(KINDS[g.kind].content);
+    c.banner = { text: 'Open *now*', href: '#contact' };
+    c.sections.unshift(
+      { id: 'story', type: 'prose', eyebrow: 'Story', title: 'Read', body: 'Para one.\n\nPara two.' },
+      { id: 'write', type: 'form', eyebrow: 'Write', title: 'Say hi', text: '', fields: ['name', 'email', 'message'], button: 'Send', action: '', email: 'a@b.c' },
+      { id: 'film', type: 'embed', eyebrow: '', title: 'Film', url: 'https://youtu.be/abc12345', caption: 'cap' },
+      { id: 'specs', type: 'table', eyebrow: '', title: 'Specs', columns: ['A', 'B'], rows: [['1', '2']] },
+      { id: 'press', type: 'logos', eyebrow: 'Seen in', items: [{ name: 'Vogue' }] },
+      { id: 'slides', type: 'slider', eyebrow: '', title: 'Slides', items: [{ caption: 'x', media: { art: 1 } }] },
+      { id: 'go', type: 'cta', eyebrow: '', title: 'Go', text: '', button: { label: 'Now', href: '#top' } },
+      { id: 'when', type: 'countdown', eyebrow: '', title: 'Soon', date: '2030-01-01T10:00', text: '' },
+    );
+    c.sections[8] = { ...(c.sections[8] as Extract<typeof c.sections[number], { type: 'cards' }>) };
+    const doc = renderDocument(g, c);
+    for (const needle of ['class="banner"', 'class="prose"', '<form class="form"', 'data-mail="a@b.c"', 'youtube-nocookie.com/embed/abc12345', '<table>', 'class="logos"', 'class="slides"', 'class="cta"', 'data-countdown="2030-01-01T10:00"', 'class="menu-btn"', 'og:title']) {
+      expect(doc).toContain(needle);
+    }
+    expect(getMarkup(doc)).toBe(renderMarkup(c));
+    expect(identify(doc, c)).toEqual(g);
+  });
+});

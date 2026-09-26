@@ -33,7 +33,7 @@ export function pieceFromNumber(n: number): Piece {
   };
 }
 
-/** A short maker's mark for a fired piece, derived from its exact code. */
+/** A short maker's mark for a fired piece, derived from its exact code (all pages). */
 export function hallmark(source: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;

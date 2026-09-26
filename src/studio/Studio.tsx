@@ -31,6 +31,7 @@ import { FolderProvider, OpenInButton } from './OpenIn';
 import { type Device, type PickInfo, Preview } from './Preview';
 import { ShapePanel } from './ShapePanel';
 import { type Doc, type Step, StudioContext, useDocHistory, useStudioApi } from './state';
+import { HOME } from '../engine/render';
 
 const CodePanel = lazy(() => import('./CodePanel').then((m) => ({ default: m.CodePanel })));
 
@@ -89,7 +90,10 @@ const STEP_INTRO: Record<Step, { title: string; text: string }> = {
 };
 
 function StudioInner({ piece, persisted: persistedAtStart }: { piece: Piece; persisted: boolean }) {
-  const initialDoc = useMemo<Doc>(() => ({ source: piece.source, content: piece.content, assets: piece.assets }), [piece]);
+  const initialDoc = useMemo<Doc>(
+    () => ({ pages: [{ slug: HOME, nav: '', source: piece.source, content: piece.content }, ...(piece.pages ?? [])], assets: piece.assets }),
+    [piece],
+  );
   const hist = useDocHistory(initialDoc);
   const [meta, setMeta] = useState({ id: piece.id, title: piece.title, created: piece.created, origin: piece.origin, fired: piece.fired });
   const persisted = useRef(persistedAtStart);
@@ -129,10 +133,11 @@ function StudioInner({ piece, persisted: persistedAtStart }: { piece: Piece; per
       title: m.title,
       created: m.created,
       updated: Date.now(),
-      source: d.source,
-      content: d.content,
+      source: d.pages[0].source,
+      content: d.pages[0].content,
       markupLocked: lockedRef.current,
       assets: d.assets,
+      pages: d.pages.slice(1).map((p) => ({ slug: p.slug, nav: p.nav, source: p.source, content: p.content })),
       origin: m.origin,
       fired: m.fired,
     });
@@ -152,15 +157,29 @@ function StudioInner({ piece, persisted: persistedAtStart }: { piece: Piece; per
   }, [doc, meta]);
 
   // Keep the title in step with the name until someone renames the piece.
-  const lastBrand = useRef(doc.content.brand);
+  const brand = doc.pages[0].content.brand;
+  const lastBrand = useRef(brand);
   useEffect(() => {
     const before = lastBrand.current;
-    const now = doc.content.brand;
-    if (now !== before) {
-      setMeta((m) => (m.title === before ? { ...m, title: now } : m));
-      lastBrand.current = now;
+    if (brand !== before) {
+      setMeta((m) => (m.title === before ? { ...m, title: brand } : m));
+      lastBrand.current = brand;
     }
-  }, [doc.content.brand]);
+  }, [brand]);
+
+  // Links between pages in the preview switch the page being edited.
+  const [scrollHash, setScrollHash] = useState<string | null>(null);
+  const onLink = useCallback(
+    (href: string) => {
+      const m = /^([\w-]+)\.html(#[\w-]*)?$/.exec(href);
+      if (!m) return false;
+      if (!doc.pages.some((p) => p.slug === m[1])) return false;
+      api.setCurrent(m[1]);
+      setScrollHash(m[2] || '#top');
+      return true;
+    },
+    [doc.pages, api],
+  );
 
   // The outline that follows the code cursor only makes sense while the code is open.
   useEffect(() => {
@@ -300,7 +319,26 @@ function StudioInner({ piece, persisted: persistedAtStart }: { piece: Piece; per
         </nav>
 
         <main className="s-stage">
-          <Preview source={doc.source} assets={doc.assets} device={device} inspect={inspect} highlight={highlight} onPick={onPick} />
+          <Preview
+            source={api.page.source}
+            pageKey={api.current}
+            scrollTo={scrollHash}
+            assets={doc.assets}
+            device={device}
+            inspect={inspect}
+            highlight={highlight}
+            onPick={onPick}
+            onLink={onLink}
+          />
+          {doc.pages.length > 1 && (
+            <nav className="s-pagebar" aria-label="Pages">
+              {doc.pages.map((p) => (
+                <button key={p.slug} type="button" className={cx(api.current === p.slug && 'is-on')} onClick={() => { api.setCurrent(p.slug); setScrollHash('#top'); }}>
+                  {p.slug}.html
+                </button>
+              ))}
+            </nav>
+          )}
           <button type="button" className="s-device-fab" onClick={() => setDevice(device === 'phone' ? 'desktop' : 'phone')}>
             {device === 'phone' ? <IconDesktop size={15} /> : <IconPhone size={15} />}
             {device === 'phone' ? 'Desktop view' : 'Phone view'}

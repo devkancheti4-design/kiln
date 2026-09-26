@@ -5,3 +5,4 @@ dist-single
 *.log
 .netlify
 .vercel
+marketing/*.mp4

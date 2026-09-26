@@ -6,7 +6,7 @@ import type { Content } from './content';
 import { AXES, type Axis, type Genome } from './genome';
 import { kindIndex } from './kinds';
 import { PALETTES } from './palettes';
-import { ENGINE_CSS, esc, renderFontsCss, renderMarkup, renderTokensCss, switchesFor, titleFor, tokensFor, type Tokens } from './render';
+import { ENGINE_CSS, esc, renderFontsCss, renderMarkup, renderTokensCss, type SiteInfo, switchesFor, titleFor, tokensFor, type Tokens } from './render';
 import { FACES, PAIRINGS, facesUsedIn, stackOf } from './typefaces';
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -161,11 +161,15 @@ export function syncFonts(src: string): string {
 }
 
 export function setTitle(src: string, title: string): string {
-  return src.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
+  return src
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`)
+    .replace(/(<meta\s+property=["']og:title["']\s+content=["'])[^"']*(["'])/i, `$1${esc(title)}$2`);
 }
 
 export function setDescription(src: string, text: string): string {
-  return src.replace(/(<meta\s+name=["']description["']\s+content=["'])[^"']*(["'])/i, `$1${esc(text)}$2`);
+  return src
+    .replace(/(<meta\s+name=["']description["']\s+content=["'])[^"']*(["'])/i, `$1${esc(text)}$2`)
+    .replace(/(<meta\s+property=["']og:description["']\s+content=["'])[^"']*(["'])/i, `$1${esc(text)}$2`);
 }
 
 export function getMarkup(src: string): string {
@@ -180,10 +184,54 @@ export function setMarkup(src: string, markup: string): string {
 }
 
 /** Re-carves the page from content: markup, <title> and description. */
-export function applyContent(src: string, c: Content): string {
-  let out = setMarkup(src, renderMarkup(c));
-  out = setTitle(out, titleFor(c));
+export function applyContent(src: string, c: Content, site?: SiteInfo): string {
+  let out = setMarkup(src, renderMarkup(c, site));
+  out = setTitle(out, titleFor(c, site));
   out = setDescription(out, c.lede.replace(/\*/g, ''));
+  return out;
+}
+
+// ------------------------------------------------------------------ shared parts (multi-page sites)
+
+/** Outer range of <style id="…">…</style> or <script id="…">…</script>. */
+export function elementRange(src: string, tag: 'style' | 'script', id: string): Range | null {
+  const open = new RegExp(`<${tag}\\b[^>]*\\bid=["']${escapeRe(id)}["'][^>]*>`, 'i').exec(src);
+  if (!open) return null;
+  const close = src.indexOf(`</${tag}>`, open.index + open[0].length);
+  return close < 0 ? null : { from: open.index, to: close + `</${tag}>`.length };
+}
+
+const SHARED_STYLES = ['tokens', 'fonts', 'engine', 'mine'];
+const SHARED_SCRIPTS = ['motion', 'interact', 'scene'];
+
+/**
+ * Every page of a site shares one design. This copies the shared parts — the token, font, engine
+ * (and any "mine") styles, the switches on <body>, and the three scripts — from one page into
+ * another, leaving that page's own title, description and markup alone.
+ */
+export function syncShared(from: string, to: string): string {
+  let out = to;
+  for (const id of SHARED_STYLES) {
+    const a = elementRange(from, 'style', id);
+    const b = elementRange(out, 'style', id);
+    if (a && b) out = out.slice(0, b.from) + from.slice(a.from, a.to) + out.slice(b.to);
+    else if (a && !b) {
+      const head = out.search(/<\/head>/i);
+      if (head >= 0) out = `${out.slice(0, head)}  ${from.slice(a.from, a.to)}\n${out.slice(head)}`;
+    } else if (!a && b) {
+      const lineStart = out.lastIndexOf('\n', b.from) + 1;
+      const lineEnd = out.indexOf('\n', b.to);
+      out = out.slice(0, lineStart) + out.slice(lineEnd < 0 ? b.to : lineEnd + 1);
+    }
+  }
+  for (const id of SHARED_SCRIPTS) {
+    const a = elementRange(from, 'script', id);
+    const b = elementRange(out, 'script', id);
+    if (a && b) out = out.slice(0, b.from) + from.slice(a.from, a.to) + out.slice(b.to);
+  }
+  const ba = bodyTagRange(from);
+  const bb = bodyTagRange(out);
+  if (ba && bb) out = out.slice(0, bb.from) + from.slice(ba.from, ba.to) + out.slice(bb.to);
   return out;
 }
 

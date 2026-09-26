@@ -114,7 +114,7 @@ export function partsOf(src: string): Parts {
 export type Plan =
   | { kind: 'none' }
   | { kind: 'reload' }
-  | { kind: 'patch'; tokens?: string; engine?: string; attrs?: Record<string, string>; markup?: boolean };
+  | { kind: 'patch'; tokens?: string; engine?: string; attrs?: Record<string, string>; markup?: boolean; title?: string };
 
 export function planUpdate(prev: string, next: string): Plan {
   if (prev === next) return { kind: 'none' };
@@ -128,6 +128,9 @@ export function planUpdate(prev: string, next: string): Plan {
   if (a.engine !== b.engine && b.engine !== null) plan.engine = b.engine;
   if (JSON.stringify(a.bodyAttrs) !== JSON.stringify(b.bodyAttrs)) plan.attrs = b.bodyAttrs;
   if (a.markup !== b.markup) plan.markup = true;
+  const ta = /<title>([\s\S]*?)<\/title>/i.exec(prev)?.[1];
+  const tb = /<title>([\s\S]*?)<\/title>/i.exec(next)?.[1];
+  if (ta !== tb && tb !== undefined) plan.title = tb;
   return plan;
 }
 
@@ -205,6 +208,12 @@ const INSTRUMENT = `(() => {
     if (pinned) { const off = pinned.getAttribute('data-kl'); pinned = null; K.highlight(off); }
   };
   K.revealAll = () => document.querySelectorAll('main > section').forEach((s) => s.classList.add('is-in'));
+  K.setTitle = (html) => { const t = document.createElement('textarea'); t.innerHTML = html; document.title = t.value; };
+  K.scrollTo = (hash) => {
+    const t = hash && hash.length > 1 ? document.getElementById(hash.slice(1)) : null;
+    if (t && hash !== '#top') t.scrollIntoView({ block: 'start' });
+    else scrollTo(0, 0);
+  };
   // Studio shortcuts keep working while the preview has focus.
   addEventListener('keydown', (e) => {
     const t = e.target;

@@ -2,7 +2,7 @@
 // to take it home — one file, a website folder, or a project for code editors and AI agents.
 import { useEffect, useState } from 'react';
 import { hallmark } from '../app/pieces';
-import { buildProjectZip, buildSingleFile, buildZip, download, slugify } from '../engine/exporter';
+import { buildProjectZip, buildSingleFile, buildStandaloneZip, buildZip, download, slugify } from '../engine/exporter';
 import { formatNumber } from '../engine/genome';
 import { cx, Modal, toast } from '../ui/controls';
 import { IconCheck, IconCopy, IconDownload, IconFire } from '../ui/icons';
@@ -24,7 +24,9 @@ export function FireDialog({
   const { doc, number } = useStudio();
   const [phase, setPhase] = useState<'firing' | 'done'>('firing');
   const [busy, setBusy] = useState<string | null>(null);
-  const serial = hallmark(doc.source);
+  const pages = doc.pages.map((p) => ({ slug: p.slug, source: p.source, content: p.content }));
+  const multi = pages.length > 1;
+  const serial = hallmark(pages.map((p) => p.source).join('\n'));
   const slug = slugify(title);
 
   useEffect(() => {
@@ -82,17 +84,17 @@ export function FireDialog({
           disabled={!!busy}
           onClick={() =>
             run('single', async () => {
-              const html = await buildSingleFile(doc.source, doc.assets);
-              download(`${slug}.html`, html, 'text/html');
+              if (multi) download(`${slug}-pages.zip`, await buildStandaloneZip(title, pages, doc.assets), 'application/zip');
+              else download(`${slug}.html`, await buildSingleFile(doc.pages[0].source, doc.assets), 'text/html');
             })
           }
         >
           <span className="f-option-ico">
             <IconDownload />
           </span>
-          <strong>One file</strong>
-          <span>A single .html with fonts and pictures inside. Email it, double-click it, host it anywhere.</span>
-          <em>{busy === 'single' ? 'Building…' : 'Easiest'}</em>
+          <strong>{multi ? 'Standalone pages' : 'One file'}</strong>
+          <span>{multi ? `${pages.length} self-contained .html files with fonts and pictures inside, linked to each other. Double-click any of them.` : 'A single .html with fonts and pictures inside. Email it, double-click it, host it anywhere.'}</span>
+          <em>{busy === 'single' ? 'Building…' : multi ? '.zip' : 'Easiest'}</em>
         </button>
         <button
           type="button"
@@ -100,7 +102,7 @@ export function FireDialog({
           disabled={!!busy}
           onClick={() =>
             run('zip', async () => {
-              const data = await buildZip(title, doc.source, doc.assets);
+              const data = await buildZip(title, pages, doc.assets);
               download(`${slug}-site.zip`, data, 'application/zip');
             })
           }
@@ -109,7 +111,7 @@ export function FireDialog({
             <IconFire />
           </span>
           <strong>Website folder</strong>
-          <span>index.html + fonts/ + images/ — how real sites are published. Drag it onto any static host.</span>
+          <span>{multi ? `${pages.length} pages` : 'index.html'} + fonts/ + images/ — how real sites are published. Drag it onto any static host.</span>
           <em>{busy === 'zip' ? 'Building…' : '.zip'}</em>
         </button>
         <button
@@ -118,7 +120,7 @@ export function FireDialog({
           disabled={!!busy}
           onClick={() =>
             run('project', async () => {
-              const data = await buildProjectZip(title, doc.source, doc.assets, doc.content);
+              const data = await buildProjectZip(title, pages, doc.assets);
               download(`${slug}-project.zip`, data, 'application/zip');
             })
           }
@@ -135,7 +137,7 @@ export function FireDialog({
           type="button"
           className="k-btn k-btn-sm"
           onClick={() => {
-            navigator.clipboard?.writeText(doc.source).then(
+            navigator.clipboard?.writeText(doc.pages.find((p) => p.slug === (multi ? doc.pages[0].slug : 'index'))!.source).then(
               () => toast('Code copied.'),
               () => toast('Copying is blocked here — use a download instead.', 'warn'),
             );

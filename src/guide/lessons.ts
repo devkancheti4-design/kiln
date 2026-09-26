@@ -398,13 +398,62 @@ export const LESSONS: Lesson[] = [
     id: 'menu',
     chapter: 'The page (HTML)',
     title: 'The menu',
-    body: ['Each menu link points at a section id: `<a href="#care">` jumps to `<section id="care">`. Add, remove or reorder the lines to change the menu.'],
+    body: ['Each menu link points at a section id: `<a href="#care">` jumps to `<section id="care">`. Add, remove or reorder the lines to change the menu. A link to another page is just its file name: `<a href="about.html">`.'],
     region: navRegion,
     challenge: {
       task: 'Add a “Home” link that jumps back to the top.',
       check: (s) => !!doc(s).querySelector('.menu a[href="#top"]'),
       hint: 'Inside <nav class="menu">, add <a href="#top">Home</a> — the hero has id="top".',
     },
+  },
+
+  {
+    id: 'blocks',
+    chapter: 'The page (HTML)',
+    title: 'Every block a site can have',
+    body: [
+      'Beyond cards, lists, galleries and questions, Kiln has blocks for everything a normal site does. In the studio they are under **Carve → Sections → Add**; in code they are plain HTML you can copy between sites.',
+      '**Article** — `<article class="prose">` with `<p>`, `<h3>`, `<ul>`, `<blockquote>` and `<figure><img></figure>`, set at a comfortable reading width.',
+      '**Form** — `<form class="form">`. With `data-mail="you@…"` it opens the visitor’s email app with the message filled in, no server needed. Put a Formspree, Basin or Getform address in `action` (or `data-netlify="true"` on Netlify) and messages land in an inbox.',
+      '**Video / map / music** — `<figure class="embed"><iframe src="…">`. Paste a normal YouTube, Vimeo, Spotify or Google Maps link in Carve and Kiln converts it.',
+      '**Table** — a real `<table>` with `<th>` and `<td>`, scrolling sideways on phones. **Logos** — `<ul class="logos">`. **Slider** — `<div class="slider">` with snap-scrolling `<figure class="slide">`s and arrows.',
+      '**Call to action** — `<section class="cta">`, a band in your accent color. **Countdown** — `<div class="countdown" data-countdown="2026-12-12T11:00">`, updated every second.',
+      'Also: a `<p class="banner">` strip above the top bar, cards that link somewhere (`<a class="card" href="about.html">`), round people photos (`<div class="grid people">`), looping `<video>` in any picture slot, and a menu button on phones.',
+    ],
+    example: {
+      code: `<form class="form" action="https://formspree.io/f/yourid" method="post">
+  <label><span>Email</span><input name="email" type="email" required></label>
+  <label><span>Message</span><textarea name="message" rows="5" required></textarea></label>
+  <button class="btn big" type="submit">Send</button>
+</form>`,
+      note: 'A working contact form with no server of your own: the form service receives the message.',
+    },
+    unlocks: { label: 'kinds of block', factor: 2 },
+  },
+  {
+    id: 'pages',
+    chapter: 'The page (HTML)',
+    title: 'More than one page',
+    body: [
+      'A site can have as many pages as you like: `index.html` is the home page; `about.html`, `menu.html` and so on are the others. Each one is a complete file — double-click any of them and it opens.',
+      'Pages link to each other by file name: `<a href="about.html">About</a>`. From an inner page, a link back to a home section is `index.html#work`.',
+      'In the Kiln studio, **Carve → Pages → Add a page** creates one. Every page shares the same design: change a token, a switch or the engine on any page and Kiln mirrors it to all the others. Only the words between `<main>` and `</main>`, the `<title>` and the description belong to each page.',
+      'The menu is the same on every page: the home page’s sections first, then the pages. The current page gets `aria-current="page"`, which the engine underlines.',
+    ],
+    example: {
+      code: `<!-- index.html -->
+<nav class="menu">
+  <a href="#shop">Shop</a>
+  <a href="about.html">About</a>
+</nav>
+
+<!-- about.html — same design, its own words -->
+<main id="main" class="subpage" data-page="about">
+  <section class="hero" id="top">
+    <h1>About <em>Clay & Co.</em></h1>`,
+      note: 'The subpage class gives inner pages a shorter hero.',
+    },
+    unlocks: { label: 'pages per site', factor: 'infinite' },
   },
 
   // ---------------------------------------------------------------- css

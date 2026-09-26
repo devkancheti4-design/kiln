@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { deletePiece, listPieces, type Piece, savePiece } from '../app/db';
 import { newId, randomNumber } from '../app/pieces';
 import { go } from '../app/router';
-import { buildSingleFile, download, slugify } from '../engine/exporter';
+import { buildSingleFile, buildStandaloneZip, download, slugify } from '../engine/exporter';
 import { formatNumber } from '../engine/genome';
 import { identify } from '../engine/patch';
 import { Modal, toast } from '../ui/controls';
@@ -79,7 +79,7 @@ export function Shelf() {
                   <div className="sh-title">
                     <a href={`#/studio/${p.id}`}>{p.title || 'Untitled'}</a>
                     <span>
-                      {g ? `No. ${formatNumber(numberOf(g))}` : '✦ Original'} · {ago(p.updated)}
+                      {g ? `No. ${formatNumber(numberOf(g))}` : '✦ Original'}{p.pages?.length ? ` · ${p.pages.length + 1} pages` : ''} · {ago(p.updated)}
                     </span>
                   </div>
                   <div className="sh-actions">
@@ -93,7 +93,11 @@ export function Shelf() {
                       className="k-icon-btn"
                       data-tip="Download as one file"
                       aria-label="Download"
-                      onClick={async () => download(`${slugify(p.title)}.html`, await buildSingleFile(p.source, p.assets), 'text/html')}
+                      onClick={async () =>
+                        p.pages?.length
+                          ? download(`${slugify(p.title)}-pages.zip`, await buildStandaloneZip(p.title, [{ slug: 'index', source: p.source, content: p.content }, ...p.pages.map((x) => ({ slug: x.slug, source: x.source, content: x.content }))], p.assets), 'application/zip')
+                          : download(`${slugify(p.title)}.html`, await buildSingleFile(p.source, p.assets), 'text/html')
+                      }
                     >
                       <IconDownload size={17} />
                     </button>

@@ -35,13 +35,24 @@ split/join round-trips).
 | **Wheel** | Browse the catalog, filter it, or open today's **Kiln Daily** (12 new designs every day, the same for everyone) | — |
 | **Shape** | Spin the wheel (flick, drag or press Space), lock what you love, pick a form, 3D scene, cursor effect, corners, spacing | the switches on `<body>` and the shape tokens |
 | **Glaze** | 24 glazes × light/dark, a hue ring, your own three colors with contrast scores, 12 type pairs, textures | the color and type tokens |
-| **Carve** | Your name, words, buttons, photos, sections (cards, lists, gallery, FAQ, contact) | the page markup |
+| **Carve** | Your name, words, buttons, photos, sections (cards, lists, gallery, FAQ, contact), and **pages** (about.html, menu.html…) that share one design | the page markup |
 | **Code** | The real file: drag numbers to scrub them, click swatches, tips for whatever the cursor is on, inspect mode (point at the page to jump to its code) | anything |
 | **Fire** | Download one file, a website folder, or a project split for code editors and AI agents | — |
 
 Every control shows the exact line of code it edits and can jump there. Designs that match the
 catalog show their number. Anything changed beyond it becomes **✦ Original, one of one**, with a
 maker's mark (hallmark) that changes whenever the code does.
+
+## Building blocks
+
+Every site is made of sections you add, reorder, hide or duplicate: hero, numbers, cards (with prices,
+links, or round people photos), about, lists (timelines, pricing, hours), quote, gallery with a lightbox,
+FAQ, **article** (long text with headings, lists and pictures), **form** (opens the visitor's email app,
+or sends for real through Formspree/Basin/Getform or Netlify Forms), **video / map / Spotify embeds**,
+**tables**, **logo strips**, **sliders**, **call-to-action bands**, **countdowns**, contact and footer.
+Plus an announcement banner, photos or looping videos in any picture slot, a phone menu button, a tab
+icon drawn from your logo letters, and social-preview tags. Sites can have **many pages**, each a
+complete file that shares the design.
 
 ## Your editor, your choice
 
@@ -71,6 +82,10 @@ index.html
 ```
 
 The same HTML becomes every layout. Only CSS changes, as in the CSS Zen Garden.
+
+**Multi-page sites:** every page is a complete file like the one above (`about.html`, `menu.html`…). They link
+to each other by file name and share one design: Kiln mirrors the tokens, engine, switches and scripts
+between pages, so a change on any page reaches all of them. Only each page's own words differ.
 
 ## Code map
 

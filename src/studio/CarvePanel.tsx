@@ -2,29 +2,97 @@
 // watch plain HTML appear as you type (switch to Code to see it).
 import { useState } from 'react';
 import { pickFile, readImage } from '../app/images';
-import { type CardItem, type CardsSection, type Content, initialsOf, type Media, type Section, SECTION_LABELS, type SectionType } from '../engine/content';
+import { type CardItem, type CardsSection, type Content, type FormField, initialsOf, type Media, type Section, SECTION_LABELS, type SectionType } from '../engine/content';
 import { slugify } from '../engine/exporter';
 import { KINDS, kindIndex } from '../engine/kinds';
 import { readTokens } from '../engine/patch';
 import { ArtSwatch } from '../ui/ArtSwatch';
 import { cx, Field, Modal, Select, Toggle, toast } from '../ui/controls';
 import { IconChevronDown, IconChevronUp, IconEye, IconEyeOff, IconImage, IconPlus, IconTrash, IconX } from '../ui/icons';
+import { PAGE_KINDS, type PageKind } from '../engine/pages';
+import { HOME } from '../engine/render';
 import { PanelSection } from './bits';
 import { useStudio } from './state';
 
 export function CarvePanel() {
-  const { doc, locked, setContent, rebuildPage } = useStudio();
-  const c = doc.content;
+  const { doc, page, current, setCurrent, locked, setContent, rebuildPage, addPage, removePage, movePage, renamePage } = useStudio();
+  const c = page.content;
+  const pageLinks = { pages: doc.pages.map((p) => ({ slug: p.slug, nav: p.nav })), current, home: doc.pages[0].content.sections };
   const [confirmRebuild, setConfirmRebuild] = useState(false);
   const [kindAsk, setKindAsk] = useState<number | null>(null);
   const [keepName, setKeepName] = useState(true);
 
   const set = (fn: (c: Content) => Content, group = 'carve') => setContent(fn, group);
 
+  const pagesPanel = (
+    <PanelSection
+      title="Pages"
+      aside={
+        <Select<PageKind>
+          label="+"
+          placeholder="Add a page"
+          value={null}
+          onChange={(k) => {
+            if (!k) return;
+            const slug = addPage(k, PAGE_KINDS.find((x) => x.id === k)!.name.split(' /')[0]);
+            setCurrent(slug);
+            toast('Page added — it shares the design; carve its own words here.');
+          }}
+          options={PAGE_KINDS.map((k) => ({ value: k.id, label: `${k.name} — ${k.note}` }))}
+        />
+      }
+    >
+      <div className="s-pages">
+        {doc.pages.map((p, i) => (
+          <div key={p.slug} className={cx('s-pageitem', p.slug === current && 'is-on')}>
+            <button type="button" className="s-pageitem-open" onClick={() => setCurrent(p.slug)} aria-current={p.slug === current}>
+              <span className="s-pageitem-file k-mono">{p.slug}.html</span>
+              <span className="s-pageitem-nav">{p.slug === HOME ? 'Home' : p.nav || 'not in the menu'}</span>
+            </button>
+            {p.slug !== HOME && (
+              <div className="s-secitem-tools">
+                <button type="button" className="k-icon-btn" onClick={() => movePage(p.slug, -1)} disabled={i <= 1} aria-label="Move up" data-tip="Earlier in the menu">
+                  <IconChevronUp size={16} />
+                </button>
+                <button type="button" className="k-icon-btn" onClick={() => movePage(p.slug, 1)} disabled={i === doc.pages.length - 1} aria-label="Move down" data-tip="Later in the menu">
+                  <IconChevronDown size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="k-icon-btn"
+                  onClick={() => {
+                    removePage(p.slug);
+                    if (current === p.slug) setCurrent(HOME);
+                  }}
+                  aria-label="Delete page"
+                  data-tip="Delete (undo with ⌘Z)"
+                >
+                  <IconTrash size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {current !== HOME && (
+        <div className="s-row2">
+          <Field label="Menu label (blank = not in menu)" value={page.nav} onChange={(v) => renamePage(current, { nav: v })} />
+          <Field label="File name" value={current} onChange={(v) => renamePage(current, { slug: v })} hint={<>Saved as <code>{current}.html</code></>} />
+        </div>
+      )}
+      <p className="k-hint">
+        {doc.pages.length > 1
+          ? 'Every page shares the design. Links in the menu go to sections on the home page and to other pages.'
+          : 'One page is often enough. Add pages for a menu, a gallery, a longer story or a contact page.'}
+      </p>
+    </PanelSection>
+  );
+
   if (locked)
     return (
       <div className="s-locked">
-        <h3>You are editing the page by hand</h3>
+        {pagesPanel}
+        <h3>You are editing {current === HOME ? 'the page' : `${current}.html`} by hand</h3>
         <p>
           The page markup in the code no longer matches these fields, so Carve is paused to protect your hand-written HTML. Keep going in <strong>Code</strong> — or
           rebuild the page from Carve (your hand edits to the page part are replaced; tokens and engine stay).
@@ -57,6 +125,7 @@ export function CarvePanel() {
 
   return (
     <>
+      {pagesPanel}
       <PanelSection title="Start from">
         <Select
           label="Kind"
@@ -119,18 +188,18 @@ export function CarvePanel() {
       <PanelSection title="Buttons">
         <div className="s-row2">
           <Field label="Main button" value={c.primary.label} onChange={(v) => set((x) => ({ ...x, primary: { ...x.primary, label: v } }))} />
-          <LinkField value={c.primary.href} sections={c.sections} onChange={(v) => set((x) => ({ ...x, primary: { ...x.primary, href: v } }))} />
+          <LinkField value={c.primary.href} sections={c.sections} site={pageLinks} onChange={(v) => set((x) => ({ ...x, primary: { ...x.primary, href: v } }))} />
         </div>
         {c.secondary ? (
           <div className="s-row2">
             <Field label="Second button" value={c.secondary.label} onChange={(v) => set((x) => ({ ...x, secondary: { ...x.secondary!, label: v } }))} />
-            <LinkField value={c.secondary.href} sections={c.sections} onChange={(v) => set((x) => ({ ...x, secondary: { ...x.secondary!, href: v } }))} />
+            <LinkField value={c.secondary.href} sections={c.sections} site={pageLinks} onChange={(v) => set((x) => ({ ...x, secondary: { ...x.secondary!, href: v } }))} />
           </div>
         ) : null}
         <Toggle checked={!!c.secondary} onChange={(on) => set((x) => ({ ...x, secondary: on ? { label: 'Learn more', href: `#${x.sections[0]?.id ?? 'top'}` } : null }))} label="Second button" />
         <div className="s-row2">
           <Field label="Top bar button" value={c.navCta.label} onChange={(v) => set((x) => ({ ...x, navCta: { ...x.navCta, label: v } }))} />
-          <LinkField value={c.navCta.href} sections={c.sections} onChange={(v) => set((x) => ({ ...x, navCta: { ...x.navCta, href: v } }))} />
+          <LinkField value={c.navCta.href} sections={c.sections} site={pageLinks} onChange={(v) => set((x) => ({ ...x, navCta: { ...x.navCta, href: v } }))} />
         </div>
       </PanelSection>
 
@@ -162,6 +231,16 @@ export function CarvePanel() {
         </div>
       </PanelSection>
 
+      <PanelSection title="Banner">
+        <Toggle checked={!!c.banner} onChange={(on) => set((x) => ({ ...x, banner: on ? { text: 'Something new — *read more*', href: '' } : null }))} label="A one-line strip above the top bar" />
+        {c.banner && (
+          <div className="s-row2">
+            <Field label="Text" value={c.banner.text} onChange={(v) => set((x) => ({ ...x, banner: { ...x.banner!, text: v } }))} />
+            <Field label="Link (optional)" value={c.banner.href ?? ''} onChange={(v) => set((x) => ({ ...x, banner: { ...x.banner!, href: v || undefined } }))} />
+          </div>
+        )}
+      </PanelSection>
+
       <PanelSection title="Footer">
         <Field label="Footer line" value={c.footer} onChange={(v) => set((x) => ({ ...x, footer: v }))} />
         <div className="s-list">
@@ -189,30 +268,66 @@ function insertBeforeContact(list: Section[], s: Section): Section[] {
   return [...list.slice(0, i), s, ...list.slice(i)];
 }
 
-function LinkField({ value, sections, onChange }: { value: string; sections: Section[]; onChange: (v: string) => void }) {
-  const anchors = [{ id: 'top', nav: 'Top' }, ...sections.filter((s) => !s.hidden).map((s) => ({ id: s.id, nav: s.nav || SECTION_LABELS[s.type] }))];
-  const isAnchor = anchors.some((a) => `#${a.id}` === value);
+/** Optional link for a card: nothing, a page, a section or a web address. */
+function CardLink({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
+  const { doc, current } = useStudio();
+  const page = doc.pages.find((p) => p.slug === current)!;
+  const site = { pages: doc.pages.map((p) => ({ slug: p.slug, nav: p.nav })), current, home: doc.pages[0].content.sections };
+  if (value === undefined)
+    return (
+      <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => onChange(doc.pages.length > 1 ? `${doc.pages[1].slug}.html` : '#top')}>
+        <IconPlus size={14} /> Make this card a link
+      </button>
+    );
+  return (
+    <div className="s-row-x s-row2">
+      <LinkField value={value} sections={page.content.sections} site={site} onChange={onChange} />
+      <span />
+      <button type="button" className="k-icon-btn" aria-label="Remove link" onClick={() => onChange(undefined)}>
+        <IconX size={16} />
+      </button>
+    </div>
+  );
+}
+
+interface SiteLinks {
+  pages: { slug: string; nav: string }[];
+  current: string;
+  home: Section[];
+}
+
+function LinkField({ value, sections, site, onChange }: { value: string; sections: Section[]; site?: SiteLinks; onChange: (v: string) => void }) {
+  const here = site?.current ?? HOME;
+  const options: { value: string; label: string }[] = [
+    { value: '#top', label: 'Top of this page' },
+    ...sections.filter((s) => !s.hidden).map((s) => ({ value: `#${s.id}`, label: `${s.nav || SECTION_LABELS[s.type]} section` })),
+  ];
+  if (site && site.pages.length > 1) {
+    if (here !== HOME) options.push(...site.home.filter((s) => !s.hidden && s.nav).map((s) => ({ value: `${HOME}.html#${s.id}`, label: `Home → ${s.nav}` })));
+    options.push(...site.pages.filter((p) => p.slug !== here).map((p) => ({ value: `${p.slug}.html`, label: `${p.slug === HOME ? 'Home' : p.nav || p.slug} page` })));
+  }
+  const known = options.some((o) => o.value === value);
   return (
     <label className="k-field">
       <span className="s-fake-label">Goes to</span>
-      <select className="k-input" value={isAnchor ? value : '__custom'} onChange={(e) => onChange(e.target.value === '__custom' ? 'https://' : e.target.value)}>
-        {anchors.map((a) => (
-          <option key={a.id} value={`#${a.id}`}>
-            {a.nav} section
+      <select className="k-input" value={known ? value : '__custom'} onChange={(e) => onChange(e.target.value === '__custom' ? 'https://' : e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
         <option value="__custom">A web address…</option>
       </select>
-      {!isAnchor && <input className="k-input" value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://" />}
+      {!known && <input className="k-input" value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://" />}
     </label>
   );
 }
 
 // ------------------------------------------------------------------ pictures
 
-function MediaPicker({ media, name, onChange, compact }: { media: Media; name: string; onChange: (m: Media) => void; compact?: boolean }) {
-  const { doc, setAssets } = useStudio();
-  const tokens = readTokens(doc.source);
+function MediaPicker({ media, name, onChange, compact, logo }: { media: Media; name: string; onChange: (m: Media) => void; compact?: boolean; logo?: boolean }) {
+  const { doc, page, setAssets } = useStudio();
+  const tokens = readTokens(page.source);
   const [open, setOpen] = useState(!compact);
 
   const upload = async () => {
@@ -224,38 +339,66 @@ function MediaPicker({ media, name, onChange, compact }: { media: Media; name: s
       let n = 2;
       while (doc.assets[path] && doc.assets[path] !== dataUrl) path = `images/${slugify(name)}-${n++}.${ext}`;
       setAssets((a) => ({ ...a, [path]: dataUrl }));
-      onChange({ ...media, image: path, alt: media.alt ?? file.name.replace(/\.[^.]+$/, '') });
+      onChange({ art: media.art, image: path, alt: media.alt ?? file.name.replace(/\.[^.]+$/, '') });
       toast('Picture added — it lives inside your piece, on this device.');
     } catch (e) {
       toast(String((e as Error).message ?? e), 'warn');
     }
   };
+  const uploadVideo = async () => {
+    const file = await pickFile('video/mp4,video/webm');
+    if (!file) return;
+    if (file.size > 25_000_000) return toast('Keep videos under 25 MB — trim it or lower the quality first.', 'warn');
+    const dataUrl = await new Promise<string>((res) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.readAsDataURL(file);
+    });
+    const ext = file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
+    let path = `images/${slugify(name)}.${ext}`;
+    let n = 2;
+    while (doc.assets[path] && doc.assets[path] !== dataUrl) path = `images/${slugify(name)}-${n++}.${ext}`;
+    setAssets((a) => ({ ...a, [path]: dataUrl }));
+    onChange({ art: media.art, video: path, alt: media.alt ?? file.name.replace(/\.[^.]+$/, '') });
+    toast('Video added — it plays muted, on a loop.');
+  };
 
   return (
     <div className={cx('s-media', compact && 's-media-compact')}>
       <div className="s-media-now">
-        {media.image && doc.assets[media.image] ? (
+        {media.video && doc.assets[media.video] ? (
+          <video src={doc.assets[media.video]} muted autoPlay loop playsInline />
+        ) : media.image && doc.assets[media.image] ? (
           <img src={doc.assets[media.image]} alt="" />
+        ) : logo ? (
+          <span className="s-media-art s-media-none">Aa</span>
         ) : (
           <ArtSwatch art={media.art} tokens={tokens} className="s-media-art" />
         )}
         <div className="s-media-actions">
           <button type="button" className="k-btn k-btn-sm" onClick={upload}>
-            <IconImage size={14} /> {media.image ? 'Replace photo' : 'Use my photo'}
+            <IconImage size={14} /> {media.image ? 'Replace' : logo ? 'Use a logo image' : 'Use my photo'}
           </button>
-          {media.image ? (
+          {!logo && !media.video && (
+            <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={uploadVideo}>
+              Use a video
+            </button>
+          )}
+          {media.image || media.video ? (
             <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => onChange({ art: media.art })}>
-              Back to art
+              {logo ? 'Text only' : 'Back to art'}
             </button>
           ) : (
-            <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => setOpen((o) => !o)}>
-              {open ? 'Hide art' : 'Pick art'}
-            </button>
+            !logo && (
+              <button type="button" className="k-btn k-btn-sm k-btn-ghost" onClick={() => setOpen((o) => !o)}>
+                {open ? 'Hide art' : 'Pick art'}
+              </button>
+            )
           )}
         </div>
       </div>
-      {media.image && <Field label="Describe the photo (for screen readers)" value={media.alt ?? ''} onChange={(v) => onChange({ ...media, alt: v })} />}
-      {!media.image && open && (
+      {(media.image || media.video) && <Field label="Describe it (for screen readers)" value={media.alt ?? ''} onChange={(v) => onChange({ ...media, alt: v })} />}
+      {!media.image && !media.video && !logo && open && (
         <div className="s-arts">
           {Array.from({ length: 12 }, (_, i) => i + 1).map((a) => (
             <button key={a} type="button" className={cx('s-art-btn', media.art === a && 'is-on')} onClick={() => onChange({ ...media, art: a })} aria-label={`Art ${a}`}>
@@ -278,6 +421,14 @@ const NEW_SECTION: Record<SectionType, () => Omit<Section, 'id'>> = {
   quote: () => ({ type: 'quote', text: 'Something kind somebody said.', name: 'A Friend', role: 'Who they are' }),
   gallery: () => ({ type: 'gallery', nav: 'Gallery', eyebrow: 'Gallery', title: 'Pictures', items: [2, 5, 7, 11].map((a, n) => ({ caption: `Picture ${n + 1}`, media: { art: a } })) }),
   faq: () => ({ type: 'faq', nav: 'FAQ', eyebrow: 'Questions', title: 'Asked *often*', items: [{ q: 'A question people ask?', a: 'A short, friendly answer.' }] }),
+  prose: () => ({ type: 'prose', nav: 'Story', eyebrow: 'Story', title: 'A longer *read*', body: 'Write paragraphs here. Leave a blank line between them.\n\n## A heading\n\nUse **bold**, *italic* and [links](https://example.com).\n\n- A list\n- of things\n\n> A quote someone said.' }),
+  form: () => ({ type: 'form', nav: 'Write to us', eyebrow: 'Get in touch', title: 'Send a *message*', text: 'We reply within a day.', fields: ['name', 'email', 'message'], button: 'Send', action: '', email: 'you@example.com' }),
+  embed: () => ({ type: 'embed', nav: 'Watch', eyebrow: 'Watch', title: 'A short *film*', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', caption: '' }),
+  table: () => ({ type: 'table', nav: 'Details', eyebrow: 'Details', title: 'At a *glance*', columns: ['Item', 'Detail', 'Price'], rows: [['Small', 'For one', '₹99'], ['Medium', 'For two', '₹149'], ['Large', 'For the table', '₹249']] }),
+  logos: () => ({ type: 'logos', eyebrow: 'Seen in', items: [{ name: 'The Times' }, { name: 'Vogue' }, { name: 'Design Weekly' }, { name: 'Local Radio' }] }),
+  slider: () => ({ type: 'slider', nav: 'Slides', eyebrow: 'Slides', title: 'Swipe *through*', items: [3, 8, 11, 5].map((a, n) => ({ caption: `Slide ${n + 1}`, media: { art: a } })) }),
+  cta: () => ({ type: 'cta', eyebrow: 'Ready?', title: 'Let us *begin*.', text: 'One line that makes the ask.', button: { label: 'Get started', href: '#contact' } }),
+  countdown: () => ({ type: 'countdown', nav: 'Countdown', eyebrow: 'Save the date', title: 'The big *day*', date: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 16), text: 'It is nearly here.' }),
   contact: () => ({ type: 'contact', nav: 'Contact', eyebrow: 'Contact', title: 'Say *hello*', text: 'I reply within a day.', email: 'you@example.com', cta: 'Email me' }),
 };
 
@@ -375,7 +526,10 @@ function SectionEditor({ s, onChange }: { s: Section; onChange: (s: Section, gro
       return (
         <>
           <HeadFields s={s} onChange={up} />
-          <Toggle checked={s.showMedia} onChange={(v) => up<CardsSection>({ showMedia: v })} label="Pictures on cards" />
+          <div className="s-checks">
+            <Toggle checked={s.showMedia} onChange={(v) => up<CardsSection>({ showMedia: v })} label="Pictures on cards" />
+            <Toggle checked={!!s.people} onChange={(v) => up<CardsSection>({ people: v || undefined })} label="People (round photos)" />
+          </div>
           <ItemList
             items={s.items}
             onChange={(items) => up({ items })}
@@ -388,6 +542,7 @@ function SectionEditor({ s, onChange }: { s: Section; onChange: (s: Section, gro
                   <Field label="Small label" value={it.meta ?? ''} onChange={(v) => set({ ...it, meta: v || undefined })} />
                   <Field label="Price" value={it.price ?? ''} onChange={(v) => set({ ...it, price: v || undefined })} />
                 </div>
+                <CardLink value={it.href} onChange={(v) => set({ ...it, href: v })} />
                 {s.showMedia && <MediaPicker compact media={it.media} name={`${s.id}-${i + 1}`} onChange={(m) => set({ ...it, media: m })} />}
               </>
             )}
@@ -466,6 +621,123 @@ function SectionEditor({ s, onChange }: { s: Section; onChange: (s: Section, gro
               </>
             )}
           />
+        </>
+      );
+    case 'prose':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field
+            label="Text"
+            value={s.body}
+            multiline
+            rows={12}
+            onChange={(v) => up({ body: v })}
+            hint={<>Blank line = new paragraph. <code>## Heading</code>, <code>- bullet</code>, <code>&gt; quote</code>, <code>**bold**</code>, <code>[link](https://…)</code>, <code>![alt](images/photo.jpg)</code>.</>}
+          />
+        </>
+      );
+    case 'form':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field label="Text" value={s.text} onChange={(v) => up({ text: v })} />
+          <div className="s-checks">
+            {(['name', 'email', 'phone', 'message'] as FormField[]).map((f) => (
+              <Toggle key={f} checked={s.fields.includes(f)} onChange={(on) => up({ fields: on ? [...s.fields, f].sort((a, b) => ['name', 'email', 'phone', 'message'].indexOf(a) - ['name', 'email', 'phone', 'message'].indexOf(b)) : s.fields.filter((x) => x !== f) })} label={f} />
+            ))}
+          </div>
+          <div className="s-row2">
+            <Field label="Button" value={s.button} onChange={(v) => up({ button: v })} />
+            <Field label="Your email (for the no-server option)" type="email" value={s.email} onChange={(v) => up({ email: v })} />
+          </div>
+          <Field
+            label="Where messages go"
+            value={s.action}
+            placeholder="blank = visitor’s email app"
+            onChange={(v) => up({ action: v })}
+            hint={
+              <>
+                Blank: opens the visitor’s email app with the message filled in (no server needed). Type <code>netlify</code> if you host on Netlify. Or paste a form address from Formspree, Basin or
+                Getform to collect messages in an inbox.
+              </>
+            }
+          />
+        </>
+      );
+    case 'embed':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field label="Link" value={s.url} onChange={(v) => up({ url: v })} hint="Paste a YouTube, Vimeo, Spotify or Google Maps link — or a place name for a map." />
+          <Field label="Caption" value={s.caption} onChange={(v) => up({ caption: v })} />
+        </>
+      );
+    case 'table':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field label="Columns (comma-separated)" value={s.columns.join(', ')} onChange={(v) => up({ columns: v.split(',').map((x) => x.trim()) })} />
+          <Field
+            label="Rows (one per line, cells separated by |)"
+            value={s.rows.map((r) => r.join(' | ')).join('\n')}
+            multiline
+            rows={6}
+            onChange={(v) => up({ rows: v.split('\n').filter((l) => l.trim()).map((l) => l.split('|').map((x) => x.trim())) })}
+          />
+        </>
+      );
+    case 'logos':
+      return (
+        <>
+          <Field label="Small label" value={s.eyebrow} onChange={(v) => up({ eyebrow: v })} />
+          <ItemList
+            items={s.items}
+            onChange={(items) => up({ items })}
+            make={(): { name: string; media?: Media } => ({ name: 'New name' })}
+            render={(it, set, i) => (
+              <>
+                <Field label="Name" value={it.name} onChange={(v) => set({ ...it, name: v })} />
+                <MediaPicker compact media={it.media ?? { art: 1 }} name={`${s.id}-${i + 1}`} onChange={(m) => set({ ...it, media: m.image ? m : undefined })} logo />
+              </>
+            )}
+          />
+        </>
+      );
+    case 'slider':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <ItemList
+            items={s.items}
+            onChange={(items) => up({ items })}
+            make={() => ({ caption: 'New slide', media: { art: 1 + Math.floor(Math.random() * 12) } })}
+            render={(it, set, i) => (
+              <>
+                <Field label="Caption" value={it.caption} onChange={(v) => set({ ...it, caption: v })} />
+                <MediaPicker compact media={it.media} name={`${s.id}-${i + 1}`} onChange={(m) => set({ ...it, media: m })} />
+              </>
+            )}
+          />
+        </>
+      );
+    case 'cta':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field label="Text" value={s.text} onChange={(v) => up({ text: v })} />
+          <div className="s-row2">
+            <Field label="Button" value={s.button.label} onChange={(v) => up({ button: { ...s.button, label: v } })} />
+            <LinkField value={s.button.href} sections={[]} onChange={(v) => up({ button: { ...s.button, href: v } })} />
+          </div>
+        </>
+      );
+    case 'countdown':
+      return (
+        <>
+          <HeadFields s={s} onChange={up} />
+          <Field label="Date and time" type="datetime-local" value={s.date} onChange={(v) => up({ date: v })} />
+          <Field label="Text" value={s.text} onChange={(v) => up({ text: v })} />
         </>
       );
     case 'contact':

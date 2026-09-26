@@ -4,7 +4,7 @@ import { createContext, type ReactNode, useContext, useState } from 'react';
 import { usePref } from '../app/prefs';
 import { canLinkFolders, EDITORS, type FolderState, useFolderSync } from '../app/workspace';
 import { buildProjectZip, download, slugify } from '../engine/exporter';
-import { joinSite, splitSite } from '../engine/split';
+import { joinProject, splitProject } from '../engine/split';
 import { cx, Modal, toast } from '../ui/controls';
 import { IconCheck, IconCode, IconDownload, IconLayers, IconRefresh, IconShelf } from '../ui/icons';
 import { useStudio } from './state';
@@ -24,16 +24,15 @@ interface FolderApi {
 const FolderContext = createContext<FolderApi | null>(null);
 
 export function FolderProvider({ pieceId, title, ensureSaved, children }: { pieceId: string; title: string; ensureSaved: () => Promise<void>; children: ReactNode }) {
-  const { doc, setSource, setAssets } = useStudio();
+  const { doc, setSources, setAssets } = useStudio();
   const [dialog, setDialog] = useState(false);
   const sync = useFolderSync(
     pieceId,
     true,
-    doc.source,
+    doc.pages.map((p) => ({ slug: p.slug, source: p.source, content: p.content })),
     doc.assets,
-    doc.content,
-    (src) => {
-      setSource(src, 'external');
+    (pages) => {
+      setSources(pages, 'external');
       toast('Updated from your editor ✓');
     },
     (fresh) => {
@@ -79,7 +78,7 @@ export function OpenInButton({ compact }: { compact?: boolean }) {
 
 function OpenInDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const f = useFolder()!;
-  const { doc, setSource } = useStudio();
+  const { doc, setSources } = useStudio();
   const [path, setPath] = usePref<string>(`folder-path:${f.pieceId}`, '');
   const [pathDraft, setPathDraft] = useState(path);
 
@@ -92,12 +91,13 @@ function OpenInDialog({ open, onClose }: { open: boolean; onClose: () => void })
       const files: Record<string, string> = {};
       for (const file of Array.from(input.files ?? [])) {
         const name = file.name;
-        const key = name.endsWith('.html') ? 'index.html' : name.endsWith('.css') ? `css/${name}` : name.endsWith('.js') ? `js/${name}` : name;
+        const key = name.endsWith('.html') ? name : name.endsWith('.css') ? `css/${name}` : name.endsWith('.js') ? `js/${name}` : name;
         files[key] = await file.text();
       }
-      if (!files['index.html']) return toast('Pick your index.html (and any css/js files you changed).', 'warn');
+      if (!Object.keys(files).some((k) => k.endsWith('.html'))) return toast('Pick your index.html (and any other html/css/js files you changed).', 'warn');
       // files not picked come from the current piece, so a lone index.html still works
-      setSource(joinSite({ ...splitSite(doc.source, doc.content), ...files }), 'import');
+      const base = splitProject(doc.pages.map((p) => ({ slug: p.slug, source: p.source, content: p.content })));
+      setSources(joinProject({ ...base, ...files }), 'import');
       toast('Imported — the studio now shows your edited files.');
     };
     input.click();
@@ -222,7 +222,7 @@ function OpenInDialog({ open, onClose }: { open: boolean; onClose: () => void })
               type="button"
               className="k-btn"
               onClick={async () => {
-                const data = await buildProjectZip(f.title, doc.source, doc.assets, doc.content);
+                const data = await buildProjectZip(f.title, doc.pages.map((p) => ({ slug: p.slug, source: p.source, content: p.content })), doc.assets);
                 download(`${slugify(f.title)}.zip`, data, 'application/zip');
               }}
             >

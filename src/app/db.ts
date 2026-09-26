@@ -2,6 +2,14 @@
 import type { Content } from '../engine/content';
 import type { Assets } from '../engine/exporter';
 
+/** An extra page (about.html …). The home page is the piece's own source/content. */
+export interface ExtraPage {
+  slug: string;
+  nav: string;
+  source: string;
+  content: Content;
+}
+
 export interface Piece {
   id: string;
   title: string;
@@ -11,6 +19,7 @@ export interface Piece {
   content: Content;
   markupLocked: boolean;
   assets: Assets;
+  pages?: ExtraPage[]; // pages after the home page, in menu order
   origin: number; // the design number it was thrown from
   fired: { at: number; serial: string } | null;
 }

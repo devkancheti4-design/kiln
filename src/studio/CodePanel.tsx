@@ -1,7 +1,6 @@
 // Code: the real file, with a W3Schools-style tip for whatever the cursor is on.
 import { useMemo, useState } from 'react';
-import { bodyTagRange, getMarkup, markupRange, styleRange } from '../engine/patch';
-import { renderMarkup } from '../engine/render';
+import { bodyTagRange, markupRange, styleRange } from '../engine/patch';
 import { ELEMENT_REF, REGION_REF, type Ref, SWITCH_REF, TOKEN_REF } from '../guide/reference';
 import { cx } from '../ui/controls';
 import { IconGuide, IconInfo } from '../ui/icons';
@@ -69,8 +68,8 @@ function contextAt(src: string, pos: number): Ctx | null {
 }
 
 export function CodePanel({ target, pick, onCursorTag }: { target: EditorTarget | null; pick: PickInfo | null; onCursorTag: (offset: number | null) => void }) {
-  const { doc, setSource, seal, locked, undo, redo } = useStudio();
-  const src = doc.source;
+  const { doc, page, current, setCurrent, setSource, seal, locked, undo, redo } = useStudio();
+  const src = page.source;
   const [cursor, setCursor] = useState(0);
   const ctx = useMemo(() => contextAt(src, cursor), [src, cursor]);
   const [jump, setJump] = useState<EditorTarget | null>(null);
@@ -90,14 +89,24 @@ export function CodePanel({ target, pick, onCursorTag }: { target: EditorTarget 
     return items;
   }, [src]);
 
-  const edited = locked || getMarkup(src) !== renderMarkup(doc.content);
+  const edited = locked;
 
   return (
     <div className="s-code">
       <div className="s-code-top">
         <div className="s-code-file">
           <span className="s-code-dot" />
-          index.html
+          {doc.pages.length > 1 ? (
+            <select className="s-code-pages" value={current} onChange={(e) => setCurrent(e.target.value)} aria-label="Page file">
+              {doc.pages.map((p) => (
+                <option key={p.slug} value={p.slug}>
+                  {p.slug}.html
+                </option>
+              ))}
+            </select>
+          ) : (
+            'index.html'
+          )}
           <span className="s-code-size">{(new Blob([src]).size / 1024).toFixed(1)} KB</span>
           {edited && <span className="k-badge k-badge-muted">hand-edited</span>}
         </div>
@@ -131,7 +140,10 @@ export function CodePanel({ target, pick, onCursorTag }: { target: EditorTarget 
               <IconGuide size={15} />
               <span>Click anywhere in the code for a tip about it</span>
             </div>
-            <p>Drag any number to scrub it. Click a color square to pick a color. ⌘F finds, ⌘Z undoes. Or press the inspect button and point at the page.</p>
+            <p>
+              Drag any number to scrub it. Click a color square to pick a color. ⌘F finds, ⌘Z undoes. Or press the inspect button and point at the page.
+              {doc.pages.length > 1 && ' Tokens, engine, switches and scripts are shared — change them on any page and every page follows.'}
+            </p>
           </>
         )}
       </div>

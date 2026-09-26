@@ -14,9 +14,9 @@ import { useStudio } from './state';
 const SPIN_AXES: Axis[] = ['form', 'palette', 'mode', 'type', 'shape', 'density', 'texture', 'motion', 'scene', 'interact'];
 
 export function ShapePanel() {
-  const { doc, patch, seal } = useStudio();
-  const src = doc.source;
-  const axes = readAxes(src, doc.content);
+  const { page, patch, seal } = useStudio();
+  const src = page.source;
+  const axes = readAxes(src, page.content);
   const t = readTokens(src);
   const [locks, setLocks] = usePref<Partial<Record<Axis, boolean>>>('locks', {});
 
