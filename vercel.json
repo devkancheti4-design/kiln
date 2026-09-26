@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build && cp dist-single/Kiln.html dist/Kiln.html",
+  "outputDirectory": "dist",
+  "headers": [
+    { "source": "/Kiln.html", "headers": [{ "key": "Content-Disposition", "value": "attachment; filename=\"Kiln.html\"" }] },
+    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
+  ]
+}

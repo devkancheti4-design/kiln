@@ -6,6 +6,9 @@ its code with a W3Schools-style guide, then fire it: download plain files you ow
 
 No AI, no account, no server, no internet. Everything runs on your device.
 
+**Try it:** https://kiln-website-maker.vercel.app. The **Offline app** button there downloads
+`Kiln.html`, the whole app in one file that works without internet.
+
 ```
 12 kinds × 10 forms × 24 glazes × 2 moods × 12 type pairs × 4 corners × 3 spacings
    × 7 textures × 3 motions × 7 3D scenes × 4 cursor styles = 487,710,720 designs
