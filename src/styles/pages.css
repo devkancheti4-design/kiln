@@ -1,5 +1,6 @@
 /* ---------- loading -------------------------------------------------- */
-.k-loading { display: grid; place-items: center; min-height: 60vh; }
+.k-loading { display: grid; place-items: center; align-content: center; gap: 1rem; min-height: 60vh; }
+.k-loading-slow { margin: 0; color: var(--k-muted); font-size: 0.9rem; animation: k-fade 0.4s ease; }
 .k-loading-wheel {
   width: 38px;
   height: 38px;

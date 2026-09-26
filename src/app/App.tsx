@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Toasts } from '../ui/controls';
 import { IconGuide, IconShelf, IconVase, IconWheel } from '../ui/icons';
 import { Shelf } from '../pages/Shelf';
@@ -7,8 +7,16 @@ import { randomNumber } from './pieces';
 import { type Route, go, useRoute } from './router';
 import { ThemeToggle } from './theme';
 
-const Studio = lazy(() => import('../studio/Studio').then((m) => ({ default: m.Studio })));
-const Guide = lazy(() => import('../pages/Guide').then((m) => ({ default: m.Guide })));
+/** Code-split pages retry if a chunk download fails (flaky networks, fresh deploys). */
+function retry<T>(load: () => Promise<T>, tries = 3): Promise<T> {
+  return load().catch(async (e) => {
+    if (tries <= 1) throw e;
+    await new Promise((r) => setTimeout(r, 700));
+    return retry(load, tries - 1);
+  });
+}
+const Studio = lazy(() => retry(() => import('../studio/Studio')).then((m) => ({ default: m.Studio })));
+const Guide = lazy(() => retry(() => import('../pages/Guide')).then((m) => ({ default: m.Guide })));
 
 export function App() {
   const route = useRoute();
@@ -91,9 +99,19 @@ function AppBar({ route }: { route: Route }) {
 }
 
 function Loading() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 7000);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="k-loading" aria-label="Loading">
       <span className="k-loading-wheel" />
+      {slow && (
+        <p className="k-loading-slow">
+          Still firing up… <button type="button" className="k-link" onClick={() => location.reload()}>Reload</button>
+        </p>
+      )}
     </div>
   );
 }
